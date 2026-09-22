@@ -104,6 +104,11 @@ stock RMK interoperability, or a board that no longer enters UF2 mode, follow
 the [bootloader recovery guide](./bootloader/README.md). Do not mix firmware
 roles or flash layouts without resetting the affected devices.
 
+## Testing without hardware
+
+Static validation, keymap simulation on `native_sim`, and on-device log
+capture/analysis are documented in [TESTING.md](./TESTING.md).
+
 ## Documentation and support
 
 - [English installation guide](http://gh.bhee.online/zmk-keyboard-cornix/en/)

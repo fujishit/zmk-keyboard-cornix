@@ -18,3 +18,9 @@ README or user request says to remove them. Validate with the current west/ZMK
 build environment when possible, and inspect `.config` for settings backend
 correctness (`CONFIG_NVS=y`, `CONFIG_SETTINGS_NVS=y`, and no
 `CONFIG_SETTINGS_NONE=y`) after settings-related changes.
+
+Before reporting a change as done, run the hardware-free checks described in
+`TESTING.md`: `just check` (static validation, Python only) and, for keymap or
+behaviour changes, `just sim-test` (native_sim keymap simulation). Add or update
+a case under `tests/sim/` when changing keymap behaviour, and extend
+`scripts/check_config.py` when adding a new configuration invariant.
