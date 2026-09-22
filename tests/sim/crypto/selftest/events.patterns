@@ -1,0 +1,7 @@
+# Compare the self-test's verdict lines.  Two of them end in a value that is
+# different on every run (a freshly generated key pair, and the RNG draw), so
+# their details are cut off and only the name + PASS/FAIL is kept; every other
+# line carries a fixed test-vector digest and is compared in full.
+/crypto selftest: ecdh-roundtrip/ { s/.*\(crypto selftest: ecdh-roundtrip [A-Z]*\).*/\1/; p; b; }
+/crypto selftest: random / { s/.*\(crypto selftest: random [A-Z]*\).*/\1/; p; b; }
+s/.*\(crypto selftest: .*\)/\1/p

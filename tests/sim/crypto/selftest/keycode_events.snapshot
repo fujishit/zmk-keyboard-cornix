@@ -1,0 +1,14 @@
+crypto selftest: psa-init PASS (psa_crypto_init=0)
+crypto selftest: driver=mbedtls-ecp
+crypto selftest: pubkey-i PASS (X=dad0b65394221cf9..)
+crypto selftest: pubkey-r PASS (X=d12dfb5289c8d4f8..)
+crypto selftest: pubkey-import PASS (gi accepted as ECC_PUBLIC_KEY)
+crypto selftest: ecdh-i PASS (DHKey=d6840f6b42f6edaf..)
+crypto selftest: ecdh-r PASS (DHKey=d6840f6b42f6edaf..)
+crypto selftest: ecdh-roundtrip PASS
+crypto selftest: cmac-len0 PASS (bb1d6929e9593728..)
+crypto selftest: cmac-len16 PASS (070a16b46b4d4144..)
+crypto selftest: cmac-len40 PASS (dfa66747de9ae630..)
+crypto selftest: cmac-len64 PASS (51f0bebf7e3b9d92..)
+crypto selftest: random PASS
+crypto selftest: ALL PASS (12 checks)

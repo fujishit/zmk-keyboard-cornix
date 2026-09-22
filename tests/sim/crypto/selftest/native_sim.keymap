@@ -1,0 +1,23 @@
+/*
+ * Host-side run of CONFIG_CORNIX_CRYPTO_SELFTEST (src/crypto_selftest.c).
+ *
+ * The key events are only here because run.sh identifies a case by its
+ * native_sim.keymap and the mock kscan needs something to replay before the
+ * executable exits; what this case actually compares is the `crypto selftest:`
+ * lines that the self-test thread logs on its way (see events.patterns).
+ *
+ * What it proves: the embedded RFC 5903 / RFC 4493 vectors and the PSA calls
+ * around them are right, on a build that has nothing to do with Bluetooth.  It
+ * does NOT say anything about the nRF52840 firmware's crypto - the host build
+ * uses a different compiler, a different entropy source and (deliberately) the
+ * generic mbedTLS ECP path - which is what the two cornix_left_selftest_*
+ * images are for.
+ */
+#include "../../_common/board_keymap.dtsi"
+
+&kscan {
+    events = <
+        ZMK_MOCK_PRESS(0,1,10)     /* position 1 = Q */
+        ZMK_MOCK_RELEASE(0,1,10)
+    >;
+};
