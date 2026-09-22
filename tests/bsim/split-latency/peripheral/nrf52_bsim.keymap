@@ -1,0 +1,60 @@
+/*
+ * Cornix split BLE peripheral (the right half) on Zephyr's BabbleSim board.
+ *
+ * Replays a scripted, irregular sequence of 20 key presses on right-hand
+ * matrix positions after the split link has had time to come up, so that the
+ * peripheral is idle between presses and its controller is free to make use
+ * of the peripheral latency the central asked for.
+ */
+
+#include "../_common/cornix_bsim_keymap.dtsi"
+
+&kscan {
+    events = <
+            /* warm-up: give the split link time to connect (the mock driver
+             * uses event 0's delay both before and after it fires, so the
+             * first measured key press lands at 4000 + 4000 + 100 ms) */
+            ZMK_MOCK_PRESS(3,9,4000)
+            ZMK_MOCK_RELEASE(3,9,100)
+            ZMK_MOCK_PRESS(0,12,20)      /* t ~ 8100 ms */
+            ZMK_MOCK_RELEASE(0,12,150)
+            ZMK_MOCK_PRESS(0,11,20)      /* t ~ 8270 ms */
+            ZMK_MOCK_RELEASE(0,11,380)
+            ZMK_MOCK_PRESS(0,10,20)      /* t ~ 8670 ms */
+            ZMK_MOCK_RELEASE(0,10,95)
+            ZMK_MOCK_PRESS(0,9,20)      /* t ~ 8785 ms */
+            ZMK_MOCK_RELEASE(0,9,720)
+            ZMK_MOCK_PRESS(0,8,20)      /* t ~ 9525 ms */
+            ZMK_MOCK_RELEASE(0,8,210)
+            ZMK_MOCK_PRESS(0,7,20)      /* t ~ 9755 ms */
+            ZMK_MOCK_RELEASE(0,7,60)
+            ZMK_MOCK_PRESS(1,12,20)      /* t ~ 9835 ms */
+            ZMK_MOCK_RELEASE(1,12,900)
+            ZMK_MOCK_PRESS(1,11,20)      /* t ~ 10755 ms */
+            ZMK_MOCK_RELEASE(1,11,170)
+            ZMK_MOCK_PRESS(1,10,20)      /* t ~ 10945 ms */
+            ZMK_MOCK_RELEASE(1,10,480)
+            ZMK_MOCK_PRESS(1,9,20)      /* t ~ 11445 ms */
+            ZMK_MOCK_RELEASE(1,9,65)
+            ZMK_MOCK_PRESS(1,8,20)      /* t ~ 11530 ms */
+            ZMK_MOCK_RELEASE(1,8,260)
+            ZMK_MOCK_PRESS(1,7,20)      /* t ~ 11810 ms */
+            ZMK_MOCK_RELEASE(1,7,1150)
+            ZMK_MOCK_PRESS(2,12,20)      /* t ~ 12980 ms */
+            ZMK_MOCK_RELEASE(2,12,80)
+            ZMK_MOCK_PRESS(2,11,20)      /* t ~ 13080 ms */
+            ZMK_MOCK_RELEASE(2,11,340)
+            ZMK_MOCK_PRESS(2,10,20)      /* t ~ 13440 ms */
+            ZMK_MOCK_RELEASE(2,10,155)
+            ZMK_MOCK_PRESS(2,9,20)      /* t ~ 13615 ms */
+            ZMK_MOCK_RELEASE(2,9,610)
+            ZMK_MOCK_PRESS(3,12,20)      /* t ~ 14245 ms */
+            ZMK_MOCK_RELEASE(3,12,100)
+            ZMK_MOCK_PRESS(3,11,20)      /* t ~ 14365 ms */
+            ZMK_MOCK_RELEASE(3,11,430)
+            ZMK_MOCK_PRESS(3,10,20)      /* t ~ 14815 ms */
+            ZMK_MOCK_RELEASE(3,10,185)
+            ZMK_MOCK_PRESS(3,8,20)      /* t ~ 15020 ms */
+            ZMK_MOCK_RELEASE(3,8,255)
+    >;
+};

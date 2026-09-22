@@ -1,0 +1,45 @@
+/*
+ * Shared devicetree glue for the Cornix BabbleSim split-latency simulation.
+ *
+ * `nrf52_bsim` is a plain simulated nRF52833 (radio + NVMC + timers), it has
+ * no keyboard matrix and no ZMK board definition. This file gives it the same
+ * thing tests/sim/_common/cornix_mock.dtsi gives native_sim: a `zmk,kscan-mock`
+ * sized like the real Cornix matrix (4 x 14) wired to the board's real
+ * `layout_50` / `default_transform`, so mock events use the same RC(row, col)
+ * coordinates as the hardware and produce the same key positions.
+ *
+ * Key position -> RC() cheat sheet (see boards/jzf/cornix/cornix-layouts.dtsi):
+ *
+ *   pos  0..5  = RC(0,0)..RC(0,5)   pos  6..11 = RC(0,12)..RC(0,7)
+ *   pos 12..17 = RC(1,0)..RC(1,5)   pos 18..23 = RC(1,12)..RC(1,7)
+ *   pos 24..29 = RC(2,0)..RC(2,5)   pos 32..37 = RC(2,12)..RC(2,7)
+ *   pos 38..43 = RC(3,0)..RC(3,5)   pos 44..49 = RC(3,12)..RC(3,7)
+ *   centre keys: position 30 -> RC(2,6), position 31 -> RC(1,13)
+ *
+ * Include it from <role>/nrf52_bsim.keymap and then set
+ *   &kscan { events = < ZMK_MOCK_PRESS(row,col,delay_ms) ... >; };
+ * Note that the mock driver uses the delay of event 0 twice (once before it
+ * fires and once after), which is handy for the "wait for the split link"
+ * warm-up at the start of the peripheral's script.
+ */
+
+#include <dt-bindings/zmk/kscan_mock.h>
+#include "../../../../boards/jzf/cornix/cornix-layouts.dtsi"
+
+/ {
+    chosen {
+        zmk,kscan = &kscan;
+        zmk,physical-layout = &layout_50;
+    };
+
+    kscan: kscan_mock {
+        compatible = "zmk,kscan-mock";
+        rows = <4>;
+        columns = <14>;
+        events = <>;
+    };
+};
+
+&layout_50 {
+    kscan = <&kscan>;
+};

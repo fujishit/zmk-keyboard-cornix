@@ -1,0 +1,12 @@
+/*
+ * Cornix split BLE central (the left half) on Zephyr's BabbleSim board.
+ *
+ * Same matrix and keymap as the peripheral, but no local key events: every
+ * key position this instance processes arrived over the split BLE link.
+ */
+
+#include "../_common/cornix_bsim_keymap.dtsi"
+
+&kscan {
+    events = <>;
+};

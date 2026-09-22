@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: MIT
+#
+# Defaults for the simulated host computer. Every one of them can be
+# overridden at run time with the matching BabbleSim command line option
+# (see src/main.c and `<host-exe> -help`), which is how scripts/bsim/run.sh
+# sweeps them.
+
+mainmenu "Cornix BabbleSim simulated host"
+
+config CORNIX_HOST_NAME_FILTER
+	string "Only connect to advertisers whose name contains this"
+	default "Cornix"
+	help
+	  The ZMK central advertises CONFIG_ZMK_KEYBOARD_NAME with the HID
+	  service UUID; the split peripheral advertises the split service UUID
+	  and no name at all, so name + 0x1812 is enough to pick the left half.
+
+config CORNIX_HOST_INTERVAL
+	int "Connection interval requested by the host, in 1.25 ms units"
+	default 12
+	help
+	  12 = 15 ms, which is what macOS typically settles on for a HID
+	  peripheral. 9 = 11.25 ms and 24 = 30 ms are the other common values.
+
+config CORNIX_HOST_LATENCY
+	int "Peripheral latency requested by the host"
+	default 0
+
+config CORNIX_HOST_TIMEOUT
+	int "Supervision timeout requested by the host, in 10 ms units"
+	default 400
+
+config CORNIX_HOST_ACCEPT_PARAM_UPDATE
+	bool "Accept the keyboard's own connection parameter update requests"
+	default y
+	help
+	  A real macOS host accepts most peripheral-initiated updates. Turning
+	  this off pins the link to what the host asked for, which isolates the
+	  effect of the ZMK central's CONFIG_BT_PERIPHERAL_PREF_* values.
+
+source "Kconfig.zephyr"

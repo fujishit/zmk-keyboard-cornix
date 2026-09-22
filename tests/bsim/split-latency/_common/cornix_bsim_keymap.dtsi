@@ -1,0 +1,6 @@
+/*
+ * The mock matrix plus the board's default keymap, so both simulated halves
+ * run exactly the keymap the hardware runs.
+ */
+#include "cornix_bsim.dtsi"
+#include "../../../../boards/jzf/cornix/cornix.keymap"
