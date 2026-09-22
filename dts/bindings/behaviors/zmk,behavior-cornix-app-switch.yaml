@@ -1,0 +1,47 @@
+# Copyright (c) 2026 Cornix contributors
+# SPDX-License-Identifier: MIT
+#
+# A macOS-style application switcher for a Windows host: while the key on
+# `mod-position` holds `hold-mod` (Ctrl on the Cornix Win layer), this behavior
+# hides that modifier from the HID report, holds `switch-mod` (Alt) instead and
+# taps `tap` (Tab) once per press, so the Windows switcher stays open until the
+# thumb key is released.  Pressed without `hold-mod` it is a plain `&kp <tap>`.
+#
+# See src/behavior_app_switch.c for the state machine and
+# config/keymap-notes.md for why the `zmk,behavior-mod-morph` it replaced could
+# not keep Alt held.
+
+description: Cornix Mac-style application switcher (hold-mod + tap -> switch-mod held + tap)
+
+compatible: "zmk,behavior-cornix-app-switch"
+
+include: zero_param.yaml
+
+properties:
+  hold-mod:
+    type: int
+    required: true
+    description: |
+      Keycode (not a MOD_* flag) of the modifier the finger is physically
+      holding, e.g. LCTRL.  It is masked out of the HID report while the
+      switcher is open.  Must be one of LCTRL .. RGUI.
+  switch-mod:
+    type: int
+    required: true
+    description: |
+      Keycode of the modifier the host should see held instead, e.g. LALT.
+      Pressed on the first tap and released when `mod-position` is released.
+      Must be one of LCTRL .. RGUI.
+  tap:
+    type: int
+    required: true
+    description: |
+      Keycode tapped on every press while the switcher is open, e.g. TAB.
+      Without `hold-mod` held this is pressed and released with the key, so it
+      still auto-repeats.
+  mod-position:
+    type: int
+    required: true
+    description: |
+      ZMK key position (0-based, the same numbering scripts/remap.py prints) of
+      the key that holds `hold-mod`.  Its release closes the switcher.
