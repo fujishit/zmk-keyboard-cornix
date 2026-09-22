@@ -1,0 +1,114 @@
+{
+ "files": [
+  {
+   "path": "logs/right-20250915-120000.log",
+   "label": "peripheral",
+   "role_hint": "peripheral",
+   "lines": 4000,
+   "events": 10,
+   "segments": 1,
+   "clock_offsets": {
+    "0": {
+     "samples": 3800,
+     "offset_s": 43200.0,
+     "flush_delay_ms": {
+      "min": 0.0,
+      "median": 0.9,
+      "p95": 3.1,
+      "max": 12.0
+     }
+    }
+   }
+  },
+  {
+   "path": "logs/left-20250915-120000.log",
+   "label": "central",
+   "role_hint": "central",
+   "lines": 5200,
+   "events": 15,
+   "segments": 1,
+   "clock_offsets": {
+    "0": {
+     "samples": 5000,
+     "offset_s": 43200.0,
+     "flush_delay_ms": {
+      "min": 0.0,
+      "median": 0.7,
+      "p95": 2.4,
+      "max": 9.0
+     }
+    }
+   }
+  }
+ ],
+ "window_ms": 2000.0,
+ "stages": {
+  "peripheral: kscan -> position": {
+   "count": 6,
+   "min": 0.4,
+   "median": 0.7,
+   "p95": 1.0,
+   "max": 1.0,
+   "unit": "ms",
+   "samples": [
+    {
+     "ms": 0.4,
+     "position": 20,
+     "peripheral_line": 10,
+     "central_line": 0
+    },
+    {
+     "ms": 0.7,
+     "position": 20,
+     "peripheral_line": 11,
+     "central_line": 0
+    },
+    {
+     "ms": 1.0,
+     "position": 20,
+     "peripheral_line": 12,
+     "central_line": 0
+    },
+    {
+     "ms": 0.4,
+     "position": 20,
+     "peripheral_line": 13,
+     "central_line": 0
+    },
+    {
+     "ms": 0.7,
+     "position": 20,
+     "peripheral_line": 14,
+     "central_line": 0
+    },
+    {
+     "ms": 1.0,
+     "position": 20,
+     "peripheral_line": 15,
+     "central_line": 0
+    }
+   ]
+  }
+ },
+ "unmatched": {
+  "peripheral: kscan": 1
+ },
+ "ble": [
+  {
+   "kind": "param_update",
+   "line": 42,
+   "t_dev": 1.9,
+   "module": "zmk",
+   "text": "le_param_updated: C0:FF:EE:00:00:01 (random): interval 6 latency 30 timeout 400",
+   "interval": 6,
+   "latency": 30,
+   "timeout": 400,
+   "interval_ms": 7.5,
+   "max_peripheral_latency_ms": 232.5,
+   "timeout_ms": 4000,
+   "label": "peripheral"
+  }
+ ],
+ "warnings": [],
+ "message": ""
+}
