@@ -115,3 +115,5 @@ cable/hub/SSD, phone, the PC's Wi-Fi adapter) -- RSSI in the log tells.
    full\|Error notifying" logs/right-<ts>.log`.
 5. A lost tap **without** `queue full`, without a disconnect within 30 s and
    with RSSI above -75 dBm would be a new mechanism: send both logs.
+
+See also CROSS_HALF_ORDER.md (2026-09-23): cross-half transpositions ("hare" → "ahre") — a left-half key overtaking an in-flight right-half key; measured with crosshalf.py.
