@@ -1,0 +1,55 @@
+# Debug build matrix: same schema as build.yaml, consumed by
+# .github/workflows/build-debug.yml (zmkfirmware build-user-config.yml with
+# build_matrix_path: build-debug.yaml).
+#
+# Every artifact adds the ZMK `zmk-usb-logging` snippet (CDC-ACM console
+# overlay) plus the local `cornix-debug-log` snippet (snippets/cornix-debug-log,
+# picked up through `snippet_root: .` in zephyr/module.yml). See
+# scripts/log/README.md for capturing and analyzing the logs.
+#
+# `studio-rpc-usb-uart` is kept on the dongle: it adds its own
+# `zephyr,cdc-acm-uart` node (chosen zmk,studio-rpc-uart) next to the logging
+# node (chosen zephyr,console), so the dongle simply exposes two CDC-ACM ports.
+# It is NOT used on the halves, exactly as in build.yaml (its .conf forces
+# CONFIG_ZMK_USB=y, which the peripheral right half must not have).
+#
+# `nrf52840-nosd` is only listed where build.yaml uses it; the Cornix boards
+# carry the no-SoftDevice partition layout in their own devicetree.
+---
+include:
+  - board: cornix_left//zmk
+    snippet: zmk-usb-logging cornix-debug-log
+    artifact-name: cornix_left_default_nosd_debug
+
+  - board: cornix_ph_left//zmk
+    snippet: zmk-usb-logging cornix-debug-log
+    artifact-name: cornix_left_for_dongle_nosd_debug
+
+  - board: cornix_right//zmk
+    snippet: zmk-usb-logging cornix-debug-log
+    artifact-name: cornix_right_nosd_debug
+
+  - board: nice_nano//zmk
+    shield: cornix_dongle_adapter cornix_dongle_eyelash dongle_display
+    snippet: studio-rpc-usb-uart nrf52840-nosd zmk-usb-logging cornix-debug-log
+    artifact-name: cornix_dongle_nosd_debug
+
+  # Debug builds of the RGB indicator variants (build.yaml).  The widget logs
+  # every state change at INF level ("Enhanced battery indication: ...",
+  # "BLE Profile N connected, ...", "Enhanced peripheral disconnected
+  # indication"), which is the quickest way to tell a wiring problem from a
+  # configuration problem.
+  - board: cornix_left//zmk
+    shield: cornix_indicator
+    snippet: zmk-usb-logging cornix-debug-log
+    artifact-name: cornix_left_indicator_debug
+
+  - board: cornix_ph_left//zmk
+    shield: cornix_indicator
+    snippet: zmk-usb-logging cornix-debug-log
+    artifact-name: cornix_left_for_dongle_indicator_debug
+
+  - board: cornix_right//zmk
+    shield: cornix_indicator
+    snippet: zmk-usb-logging cornix-debug-log
+    artifact-name: cornix_right_indicator_debug

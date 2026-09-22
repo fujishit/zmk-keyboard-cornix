@@ -1,0 +1,13 @@
+# Cornix on-device latency debugging snippet.
+#
+# Use together with ZMK's own `zmk-usb-logging` snippet, which provides the
+# CDC-ACM console devicetree overlay (chosen zephyr,console under
+# zephyr_udc0). This snippet only adds Kconfig, so it can be applied to every
+# Cornix role, including the BLE peripheral right half where CONFIG_ZMK_USB=n.
+#
+#   west build -b cornix_right//zmk -S "zmk-usb-logging cornix-debug-log" ...
+#
+# Snippet format follows zmk/app/snippets/zmk-usb-logging/snippet.yml.
+name: cornix-debug-log
+append:
+  EXTRA_CONF_FILE: cornix-debug-log.conf

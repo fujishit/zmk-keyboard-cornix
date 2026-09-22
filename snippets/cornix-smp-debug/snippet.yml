@@ -1,0 +1,12 @@
+# Cornix LE Secure Connections pairing debug snippet.
+#
+# Kconfig only, so it stacks on top of `zmk-usb-logging` + `cornix-debug-log`
+# exactly like the latter does:
+#
+#   west build -b cornix_left//zmk \
+#       -S "zmk-usb-logging cornix-debug-log cornix-smp-debug" ...
+#
+# Snippet format follows zmk/app/snippets/zmk-usb-logging/snippet.yml.
+name: cornix-smp-debug
+append:
+  EXTRA_CONF_FILE: cornix-smp-debug.conf
