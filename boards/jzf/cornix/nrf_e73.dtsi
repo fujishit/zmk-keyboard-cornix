@@ -86,3 +86,24 @@ zephyr_udc0: &usbd {
         };
     };
 };
+
+/*
+ * DC/DC converters (added 2026-09-21). The stock RMK firmware for this board
+ * (rmk-cornix keyboard.toml: dcdc_reg0 = true, dcdc_reg1 = true,
+ * dcdc_reg0_voltage = "3V3") runs both nRF52840 regulators in DC/DC mode;
+ * Zephyr defaults to LDO mode. DC/DC lowers current draw and supply droop
+ * during radio bursts. The E73 module carries the DCC/DCCH inductors, and
+ * REG0 (high-voltage mode, VDDH = battery/USB) outputs 3.3 V as programmed in
+ * UICR.REGOUT0 by the original firmware.
+ */
+#include <zephyr/dt-bindings/regulator/nrf5x.h>
+
+/* REG0 (HV stage) has no mode property in Zephyr 4.1: enabling the node turns
+ * on the high-voltage DC/DC stage (same as nrf52840dk). */
+&reg0 {
+    status = "okay";
+};
+
+&reg1 {
+    regulator-initial-mode = <NRF5X_REG_MODE_DCDC>;
+};
