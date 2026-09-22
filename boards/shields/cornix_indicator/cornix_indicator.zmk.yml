@@ -2,10 +2,8 @@ file_format: "1"
 id: cornix_indicator
 name: CORNIX_INDICATOR
 type: shield
-url: https://github.com/hitsmaxft/
+url: https://github.com/hitsmaxft/zmk-keyboard-cornix
 requires: [Cornix]
 exposes: []
 features:
   - led
-siblings:
-  - CORNIX_INDICATOR

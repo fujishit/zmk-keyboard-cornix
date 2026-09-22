@@ -1,2 +1,6 @@
+# Note: no whitespace is allowed inside the shields_list_contains() argument.
+# Zephyr implements it in scripts/kconfig/kconfigfunctions.py as a plain
+# `shield in os.environ["SHIELD_AS_LIST"].split(";")`, so " cornix_indicator"
+# never matches and the symbol would silently stay n.
 config SHIELD_CORNIX_INDICATOR
-	def_bool $(shields_list_contains, cornix_indicator)
+	def_bool $(shields_list_contains,cornix_indicator)
