@@ -1,0 +1,5 @@
+[host 12:00:00.000] --- capture: start label=device date=2026-09-15 ---
+[host 12:00:00.001] some text without any zephyr timestamp
+[host 12:00:00.002] [00:00:00.100,000] <inf> zmk: Welcome to ZMK!
+
+[host 12:00:00.003] [00:00:00.200,000] <inf> bt_hci_core: HW Platform: Nordic Semiconductor (0x0002)

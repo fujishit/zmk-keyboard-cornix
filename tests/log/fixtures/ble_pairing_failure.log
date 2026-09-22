@@ -1,0 +1,29 @@
+[host 09:00:00.000] *** Booting Zephyr OS build v4.1.0 ***
+[host 09:00:00.010] [00:00:00.010,000] <inf> zmk: Welcome to ZMK!
+[host 09:00:00.020] [00:00:00.020,000] <dbg> settings: settings_call_set_handler: set-value OK. key: bt/id
+[host 09:00:00.021] [00:00:00.021,000] <dbg> settings: settings_call_set_handler: set-value OK. key: bt/keys/aabbccddeeff1
+[host 09:00:00.022] [00:00:00.022,000] <dbg> settings: settings_call_set_handler: set-value OK. key: ble/profiles/0
+[host 09:00:00.023] [00:00:00.023,000] <dbg> zmk: ble_profiles_handle_set: Setting BLE value profiles/0
+[host 09:00:00.024] [00:00:00.024,000] <dbg> zmk: ble_profiles_handle_set: Loaded AA:BB:CC:DD:EE:FF (public) address for profile 0
+[host 09:00:00.025] [00:00:00.025,000] <err> settings: set-value failure. key: ble/profiles/1 error(-22)
+[host 09:00:00.500] [00:00:00.500,000] <inf> bt_hci_core: Identity: F1:E2:D3:C4:B5:A6 (random)
+[host 09:00:00.501] [00:00:00.501,000] <inf> bt_hci_core: HW Platform: Nordic Semiconductor (0x0002)
+[host 09:00:00.502] [00:00:00.502,000] <inf> bt_hci_core: HCI: version 5.4 (0x0d) revision 0x0000, manufacturer 0x05f1
+[host 09:00:01.000] [00:00:01.000,000] <dbg> zmk: connected: Connected AA:BB:CC:DD:EE:FF (public)
+[host 09:00:01.001] [00:00:01.001,000] <dbg> zmk: connected: Active profile connected
+[host 09:00:01.500] [00:00:01.500,000] <err> zmk: Security failed: AA:BB:CC:DD:EE:FF (public) level 2 err 2
+[host 09:00:03.000] [00:00:03.000,000] <dbg> zmk: disconnected: Disconnected from AA:BB:CC:DD:EE:FF (public) (reason 0x3d)
+[host 09:00:04.000] [00:00:04.000,000] <dbg> zmk: connected: Connected AA:BB:CC:DD:EE:FF (public)
+[host 09:00:04.500] [00:00:04.500,000] <wrn> bt_smp: Refusing new pairing. The old bond must be unpaired first.
+[host 09:00:04.600] [00:00:04.600,000] <err> bt_smp: pairing failed (peer reason 0x5)
+[host 09:00:05.000] [00:00:05.000,000] <dbg> zmk: disconnected: Disconnected from AA:BB:CC:DD:EE:FF (public) (reason 0x08)
+[host 09:00:06.000] [00:00:06.000,000] <dbg> zmk: split_central_connected: Connected: C0:FF:EE:00:00:01 (random)
+[host 09:00:06.100] [00:00:06.100,000] <dbg> zmk: split_central_process_connection: Current security for connection: 2
+[host 09:00:07.000] [00:00:07.000,000] <dbg> zmk: split_central_disconnected: Disconnected: C0:FF:EE:00:00:01 (random) (reason 8)
+[host 09:00:07.100] [00:00:07.100,000] <wrn> zmk: Failed to connect to C0:FF:EE:00:00:01 (random) (62)
+[host 09:00:08.000] [00:00:08.000,000] <err> os: >>> ZEPHYR FATAL ERROR 2: Stack overflow on CPU 0
+[host 09:00:08.001] [00:00:08.001,000] <err> os: Halting system
+[host 09:00:09.000] *** Booting Zephyr OS build v4.1.0 ***
+[host 09:00:09.010] [00:00:00.010,000] <inf> zmk: Welcome to ZMK!
+[host 09:00:09.020] [00:00:00.020,000] <wrn> zmk: Clearing all existing BLE bond information from the keyboard
+[host 09:00:09.030] [00:00:00.030,000] <err> bt_keys: Failed to save keys (err -28)

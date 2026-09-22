@@ -1,0 +1,13 @@
+[host 12:00:00.000] --- capture: start label=right date=2026-09-15 ---
+[host 12:00:00.000] *** Booting Zephyr OS build v4.1.0 ***
+[host 12:00:00.001] [00:00:00.001,000] <inf> zmk: Welcome to ZMK!
+[host 12:00:00.500] [00:00:00.500,000] <inf> bt_hci_core: Identity: F1:E2:D3:C4:B5:A6 (random)
+[host 12:00:01.000] [00:00:00.900,000] <dbg> zmk: le_param_updated: C0:FF:EE:00:00:01 (random): interval 6 latency 30 timeout 400
+[host 12:00:05.000] [00:00:05.000,000] <dbg> zmk: kscan_matrix_read: Sending event at 1,2 state on
+[host 12:00:05.001] [00:00:05.000,500] <dbg> zmk: zmk_physical_layouts_kscan_process_msgq: Row: 1, col: 2, position: 20, pressed: true
+[host 12:00:05.001] [00:00:05.000,700] <dbg> zmk: split_peripheral_listener: 
+[host 12:00:05.120] [00:00:05.120,000] <dbg> zmk: kscan_matrix_read: Sending event at 1,2 state off
+[host 12:00:05.121] [00:00:05.121,000] <dbg> zmk: zmk_physical_layouts_kscan_process_msgq: Row: 1, col: 2, position: 20, pressed: false
+[host 12:00:05.122] [00:00:05.121,300] <dbg> zmk: split_peripheral_listener: 
+[host 12:00:06.000] [00:00:06.000,000] <wrn> zmk: Position state message queue full, popping first message and queueing again
+[host 12:00:06.001] [00:00:06.000,100] <dbg> zmk: send_position_state_callback: Error notifying -128

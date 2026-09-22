@@ -1,0 +1,17 @@
+[host 12:00:00.001] [00:00:00.001,000] <inf> zmk: Welcome to ZMK!
+[host 12:00:01.000] [00:00:01.000,000] <dbg> zmk: split_central_process_connection: New connection params: Interval: 6, Latency: 30, PHY: 1
+[host 12:00:01.100] [00:00:01.100,000] <inf> zmk: Endpoint changed: USB
+[host 12:00:05.011] [00:00:05.010,000] <dbg> zmk: split_central_notify_func: [NOTIFICATION] data 0x2000a3c4 length 7
+[host 12:00:05.011] [00:00:05.010,200] <dbg> zmk: peripheral_event_work_callback: Trigger key position state change of type 0
+[host 12:00:05.012] [00:00:05.010,400] <dbg> zmk: zmk_keymap_apply_position_state: layer_id: 0 position: 20, binding name: key_press
+[host 12:00:05.012] [00:00:05.010,600] <dbg> zmk: hid_listener_keycode_pressed: usage_page 0x07 keycode 0x04 implicit_mods 0x00 explicit_mods 0x00
+[host 12:00:05.131] [00:00:05.130,000] <dbg> zmk: split_central_notify_func: [NOTIFICATION] data 0x2000a3c4 length 7
+[host 12:00:05.131] [00:00:05.130,100] <dbg> zmk: peripheral_event_work_callback: Trigger key position state change of type 0
+[host 12:00:05.131] [00:00:05.130,300] <dbg> zmk: zmk_keymap_apply_position_state: layer_id: 0 position: 20, binding name: key_press
+[host 12:00:05.132] [00:00:05.130,500] <dbg> zmk: hid_listener_keycode_released: usage_page 0x07 keycode 0x04 implicit_mods 0x00 explicit_mods 0x00
+[host 12:00:07.000] [00:00:07.000,000] <dbg> zmk: kscan_matrix_read: Sending event at 0,0 state on
+[host 12:00:07.001] [00:00:07.000,400] <dbg> zmk: zmk_physical_layouts_kscan_process_msgq: Row: 0, col: 0, position: 0, pressed: true
+[host 12:00:07.001] [00:00:07.000,600] <dbg> zmk: zmk_keymap_apply_position_state: layer_id: 0 position: 0, binding name: key_press
+[host 12:00:07.001] [00:00:07.000,800] <dbg> zmk: hid_listener_keycode_pressed: usage_page 0x07 keycode 0x14 implicit_mods 0x00 explicit_mods 0x00
+[host 12:00:08.000] [00:00:08.000,000] <dbg> zmk: zmk_keymap_apply_position_state: layer_id: 0 position: 36, binding name: mo
+[host 12:00:09.000] [00:00:09.000,000] <err> zmk: FAILED TO SEND OVER USB: -11
