@@ -7,3 +7,12 @@ result
 target
 
 firmware
+
+# host-simulation workspace (scripts/sim/bootstrap.sh)
+.sim/
+
+# on-device log captures (scripts/log/capture.py)
+logs/
+
+# python
+__pycache__/

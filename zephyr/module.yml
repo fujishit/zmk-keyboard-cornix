@@ -1,6 +1,17 @@
 ---
 name: zmk-keyboard-cornix
 build:
+  # Folder containing this module's "CMakeLists.txt" (. = repo root).  It is
+  # what compiles src/ble_usb_gate.c; everything else in this module is data
+  # (boards/, snippets/, dts) resolved through the settings below.
+  cmake: .
+  # Kconfig fragment defining this module's own CONFIG_CORNIX_* symbols.
+  kconfig: Kconfig
   settings:
     board_root: .
+    # Folder containing a "dts" folder (. = root): it is what puts
+    # dts/bindings/ on Zephyr's binding search path (DTS_ROOT ->
+    # DTS_ROOT_BINDINGS, zephyr/cmake/modules/dts.cmake:221-238), so the
+    # keymap can use this module's own `zmk,behavior-*` compatibles.
+    dts_root: .
     snippet_root: .

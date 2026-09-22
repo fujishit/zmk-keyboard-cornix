@@ -1,0 +1,262 @@
+# Cornix module Kconfig.
+#
+# Symbols defined here are this repository's own ("CORNIX_" prefix, so they
+# never collide with ZMK's ZMK_* or Zephyr's).  They are reachable from a
+# board .conf under config/ because zephyr/module.yml declares
+# `build: kconfig: Kconfig`.
+
+config CORNIX_BLE_PAUSE_ON_USB
+	bool "Pause the BLE host link while the USB endpoint is in use"
+	default n
+	depends on ZMK_BLE && ZMK_USB && (ZMK_SPLIT_ROLE_CENTRAL || !ZMK_SPLIT)
+	# The resume path calls zmk_ble_set_device_name() with the name that is
+	# already set, which is the only public ZMK API that stops advertising
+	# *and* re-runs update_advertising() (zmk/app/src/ble.c:358-376).  That
+	# needs bt_set_name() to succeed, i.e. a dynamic device name.  ZMK only
+	# `imply`s it (zmk/app/Kconfig:167), so make it a hard requirement here.
+	select BT_DEVICE_NAME_DYNAMIC
+	help
+	  On a split keyboard the central half owns both the USB connection and
+	  the BLE connection to the host.  When the keyboard is used over USB all
+	  day, the BLE host (for example a Mac that keeps a bond for the
+	  keyboard) still tries to reconnect, and every one of those attempts
+	  costs the central radio time it needs for the split link to the other
+	  half.  A host that fails to reconnect - a pairing/encryption failure it
+	  retries about once a second - can starve a weak split link badly enough
+	  to drop keystrokes.
+
+	  With this enabled, the central disconnects the active BLE profile and
+	  stops advertising as soon as the *selected* output endpoint is USB, and
+	  starts advertising again as soon as it is not (a BLE host becomes the
+	  selected endpoint, or the USB cable is unplugged).  The split link is
+	  never touched: the central talks to its peripherals as a BLE *central*,
+	  while this only stops the central's own peripheral-role advertising and
+	  the one connection that belongs to the active host profile.
+
+	  Asking for BLE with `&out OUT_BLE` still works: whenever the preferred
+	  transport becomes BLE while USB is plugged in, the gate opens for
+	  CORNIX_BLE_PAUSE_ON_USB_BLE_GRACE_MS so a host can connect.  If one
+	  does, it becomes the selected endpoint and the gate stays open; if none
+	  does, the preference is put back to USB (which ZMK persists) and the
+	  gate closes again.
+
+	  Costs while USB is selected: the BLE host cannot connect at all, so OS
+	  detection over BLE and ZMK Studio over BLE are unavailable until USB is
+	  deselected or unplugged.
+
+config CORNIX_BLE_PAUSE_ON_USB_DELAY_MS
+	int "Settle time in ms before the gate acts"
+	depends on CORNIX_BLE_PAUSE_ON_USB
+	default 500
+	help
+	  How long to wait after an endpoint / USB / BLE profile event before
+	  pausing or resuming.  It debounces the burst of events that a replug or
+	  an `&out` toggle produces, and - more importantly - it is also the
+	  delay used to re-check advertising after ZMK restarts it from its own
+	  disconnected() callback (zmk/app/src/ble.c:548).
+
+config CORNIX_BLE_PAUSE_ON_USB_BLE_GRACE_MS
+	int "BLE grace window in ms after the preferred transport becomes BLE"
+	depends on CORNIX_BLE_PAUSE_ON_USB
+	default 20000
+	help
+	  How long advertising stays allowed after the user asks for BLE while
+	  USB is plugged in - `&out OUT_BLE`, the output toggle, or a preferred
+	  transport restored from settings at boot.
+
+	  It is needed because ZMK falls back from a preferred-but-not-ready BLE
+	  to USB (zmk/app/src/endpoints.c, get_selected_transport()): while this
+	  feature holds BLE down, the selected transport is USB whatever the user
+	  asked for, so without a window a "gate when selected is USB" rule would
+	  make `&out OUT_BLE` a no-op.
+
+	  If no host connects within the window, the preferred transport is set
+	  back to USB - ZMK persists it, so a stale preferred = BLE (pressed once
+	  to test, then restored on every boot) can no longer disable the gate
+	  forever - and the gate closes.  Make it long enough for the host to
+	  notice the advertising and finish reconnecting; 20 s covers a Mac
+	  waking up its Bluetooth stack.
+
+config CORNIX_CRYPTO_SELFTEST
+	bool "Run a PSA crypto self-test (P-256/ECDH, AES-CMAC, RNG) after boot"
+	default n
+	# PSA_CRYPTO_CLIENT is Zephyr's promptless "a PSA crypto API provider is
+	# enabled in the system" symbol, and its help text says in so many words
+	# that it is what lets a user "select desired PSA_WANT features"
+	# (zephyr/modules/mbedtls/Kconfig.psa.auto:8-16).  It is exactly the
+	# condition this test needs, and it is reached from both directions that
+	# matter here:
+	#   * a Bluetooth build: BT_ECC (pulled in by LE Secure Connections)
+	#     selects MBEDTLS_PSA_CRYPTO_C, which enables MBEDTLS_PSA_CRYPTO_CLIENT
+	#     -> PSA_CRYPTO_CLIENT (Kconfig.tls-generic:559-563), and BT_ECC/
+	#     BT_CRYPTO already select every PSA_WANT_* symbol below;
+	#   * a build without Bluetooth (native_sim): plain
+	#     CONFIG_MBEDTLS_PSA_CRYPTO_C=y is enough.
+	# Depending on MBEDTLS_PSA_CRYPTO_C directly instead makes Kconfig report a
+	# dependency loop, because the PSA_WANT_* symbols selected below feed back
+	# into the mbedTLS configuration; depending on PSA_CRYPTO_CLIENT - the same
+	# condition their own `if` block uses - does not.
+	# LOG is a dependency, not a `select`: selecting it from a symbol that
+	# itself depends on the mbedTLS configuration closes a Kconfig dependency
+	# loop through LOG's own reverse dependencies.  The test is pointless
+	# without a log anyway - its whole output is LOG_INF/LOG_ERR lines.
+	depends on PSA_CRYPTO_CLIENT && LOG
+	select PSA_WANT_ALG_ECDH
+	select PSA_WANT_ECC_SECP_R1_256
+	select PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_BASIC
+	select PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_IMPORT
+	select PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_EXPORT
+	select PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_GENERATE
+	select PSA_WANT_ALG_CMAC
+	select PSA_WANT_KEY_TYPE_AES
+	help
+	  Debug aid for LE Secure Connections pairing failures.
+
+	  When LE SC pairing ends with `Security failed ... err 1`
+	  (BT_SECURITY_ERR_AUTH_FAIL), the host has rejected our DHKey check or
+	  confirm value (zephyr/subsys/bluetooth/host/smp.c, security_err_get()
+	  maps BT_SMP_ERR_DHKEY_CHECK_FAILED and BT_SMP_ERR_CONFIRM_FAILED to
+	  AUTH_FAIL).  Both are computed from the ECDH shared secret and AES-CMAC,
+	  so the first question is whether this build's crypto is correct at all -
+	  a question a toolchain or PSA driver difference can decide.
+
+	  This runs the very same PSA Crypto calls the Bluetooth host uses
+	  (zephyr/subsys/bluetooth/host/ecc.c: psa_import_key / psa_generate_key /
+	  psa_export_public_key / psa_raw_key_agreement(PSA_ALG_ECDH, ...);
+	  zephyr/subsys/bluetooth/crypto/bt_crypto_psa.c: psa_mac_compute with
+	  PSA_ALG_CMAC) against published test vectors - RFC 5903 section 8.1 for
+	  P-256 / ECDH and RFC 4493 section 4 for AES-CMAC - plus a random key pair
+	  round trip and a non-constant check on psa_generate_random().
+
+	  Each check logs one line
+
+	      crypto selftest: <name> PASS|FAIL (details)
+
+	  followed by `crypto selftest: ALL PASS` or `crypto selftest: FAILED n`.
+
+	  Costs about 4 KiB of RAM (its own thread stack) and a few KiB of flash
+	  while enabled; leave it off in normal builds.
+
+config CORNIX_CRYPTO_SELFTEST_DELAY_MS
+	int "Delay in ms between boot and the self-test"
+	depends on CORNIX_CRYPTO_SELFTEST
+	default 2000
+	help
+	  The test itself only needs psa_crypto_init(), which Zephyr's mbedTLS
+	  module runs from a POST_KERNEL SYS_INIT
+	  (zephyr/modules/mbedtls/zephyr_init.c, CONFIG_MBEDTLS_INIT), so it is
+	  ready before the APPLICATION-level SYS_INIT that starts the test thread.
+	  The delay exists for the *log*: with the USB CDC-ACM console the host has
+	  to enumerate the port first, and deferred logging only starts draining
+	  after CONFIG_LOG_PROCESS_THREAD_STARTUP_DELAY_MS.  0 runs the test
+	  immediately.
+
+config CORNIX_CRYPTO_SELFTEST_STACK_SIZE
+	int "Stack size of the self-test thread"
+	depends on CORNIX_CRYPTO_SELFTEST
+	default 4096
+	help
+	  P-256 scalar multiplication is run on a dedicated thread rather than on
+	  the system work queue for the same reason the Bluetooth host runs it on
+	  its own long work queue (CONFIG_BT_LONG_WQ, 1400 bytes there): it needs
+	  far more stack than CONFIG_SYSTEM_WORKQUEUE_STACK_SIZE leaves free.  The
+	  default is generous because the generic mbedTLS ECP path needs much more
+	  than the p256-m driver.
+
+config CORNIX_REMOTE_BOOT
+	bool "Enter the bootloader from the host over the USB CDC-ACM console"
+	default n
+	# The whole feature is a callback of the legacy USB device stack's CDC ACM
+	# class driver, so without that class there is nothing to hook.  On a debug
+	# image the class is there because CONFIG_ZMK_USB_LOGGING selects
+	# USB_CDC_ACM (zmk/app/Kconfig).
+	depends on USB_CDC_ACM
+	# zephyr/subsys/usb/device/class/Kconfig.cdc:55 - it is what compiles
+	# cdc_acm_dte_rate_callback_set() and the SET_LINE_CODING hook
+	# (cdc_acm.c:182-186, 724-737).  It defaults to y only for BOOTLOADER_BOSSA
+	# boards, so it has to be asked for here.
+	select CDC_ACM_DTE_RATE_CALLBACK_SUPPORT
+	# sys_reboot(); ZMK already defaults it to y (zmk/app/Kconfig:676) but this
+	# code also builds outside a ZMK application.
+	select REBOOT
+	help
+	  The "1200 bps touch": the host opens the CDC-ACM console port, sets the
+	  line-coding baud rate to a magic value and closes it again.  No data is
+	  exchanged, so any serial library can do it - see `scripts/flash.py
+	  --enter left|right|reset-left` and the "Remote bootloader entry" section
+	  of scripts/FLASHING.md.
+
+	  Magic rates, all of them useless for a real console:
+
+	    1200 - reboot *this* half into its UF2 bootloader, through the very
+	           same `bootload` behavior the `&bootloader` key runs;
+	    2400 - ask split peripheral CORNIX_REMOTE_BOOT_PERIPHERAL_INDEX (the
+	           right half) to do the same.  ZMK's split transport invokes a
+	           behavior on a peripheral *by name*, and reset.dtsi is compiled
+	           into every ZMK build, so the peripheral needs no firmware change
+	           and no USB stack of its own;
+	    4800 - sys_reboot(SYS_REBOOT_COLD) of this half.
+
+	  Any other rate is ignored, so opening the port with a terminal program
+	  cannot reboot the keyboard by accident.
+
+	  This is a debugging/flashing aid: anything that can open the console port
+	  can put the keyboard into its bootloader, so enable it on debug images
+	  (the `cornix-remote-boot` snippet, also pulled in by `cornix-debug-log`)
+	  rather than on a daily-driver build.
+
+config CORNIX_REMOTE_BOOT_DELAY_MS
+	int "Delay in ms between the magic baud rate and the reboot"
+	depends on CORNIX_REMOTE_BOOT
+	default 100
+	help
+	  The rate callback runs in the USB device stack's context and has to
+	  return before the control transfer can be ACKed, so the action is run
+	  from a delayable work item instead.  The delay also gives the host time
+	  to finish closing the port - a device that vanishes mid-close leaves a
+	  stuck handle behind on Windows - and debounces hosts that send
+	  SetLineCoding twice.
+
+config CORNIX_REMOTE_BOOT_PERIPHERAL_INDEX
+	int "Split peripheral index the 2400 bps trigger targets"
+	depends on CORNIX_REMOTE_BOOT
+	default 0
+	help
+	  Cornix has exactly one peripheral (the right half), which is index 0.
+	  The index is the `source` a peripheral key event would carry, i.e. the
+	  slot in zmk/app/src/split/bluetooth/central.c's `peripherals[]`.
+
+config CORNIX_APP_SWITCH
+	bool "macOS-style application switcher behavior (zmk,behavior-cornix-app-switch)"
+	default y
+	# The behavior drives the HID modifier state (zmk_hid_masked_modifiers_set)
+	# and raises keycode events, both of which ZMK only builds for a non-split
+	# board or the central half - zmk/app/CMakeLists.txt:48 guards src/hid.c,
+	# src/hid_listener.c and every keyboard behavior with exactly this
+	# condition.  On the right half the `app_tab` node is still in the
+	# devicetree (the keymap is shared) but nothing compiles against it, which
+	# is also what happens to `zmk,behavior-mod-morph` there.
+	depends on ZMK_SPLIT_ROLE_CENTRAL || !ZMK_SPLIT
+	help
+	  Compiles src/behavior_app_switch.c, the `zmk,behavior-cornix-app-switch`
+	  behavior used by `app_tab` on the Win layer of config/cornix.keymap
+	  (position 0, Tab).
+
+	  While the left thumb rest key (position 41, `mod-position`) holds Ctrl
+	  (`hold-mod`), a press hides that Ctrl from the HID report, holds Alt
+	  (`switch-mod`) and taps Tab; every further press taps Tab again with Alt
+	  still down, so the Windows Alt+Tab switcher stays open and steps through
+	  the window list exactly like Cmd+Tab does on macOS.  Releasing 41
+	  releases Alt, which is what commits the selection.  Pressed without Ctrl
+	  held the key is a plain `&kp TAB`.
+
+	  This replaces a `zmk,behavior-mod-morph` to `&kp LA(TAB)`, which could
+	  not work: LALT is an *implicit* modifier of that keypress and ZMK
+	  releases implicit modifiers together with the key
+	  (zmk/app/src/hid_listener.c, zmk_hid_implicit_modifiers_release()), so
+	  the switcher closed on every tap.
+
+	  The source is additionally gated on DT_HAS_COMPAT_STATUS_OKAY(), so with
+	  the symbol on but no node using the compatible it compiles to nothing;
+	  leaving it at its default therefore costs a keymap that does not use it
+	  no flash at all.
