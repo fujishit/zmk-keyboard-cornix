@@ -23,10 +23,22 @@ manifest:
       remote: urob
       revision: main
       clone-depth: 1
-    #- name: zmk-rgbled-widget
-    #  remote: hitsmaxft
-    #  revision: main
-    #  clone-depth: 1
+    # RGB LED indicators for the two WS2812 LEDs on each half
+    # (boards/shields/cornix_indicator).  This is hitsmaxft's fork of
+    # caksoylar/zmk-rgbled-widget, NOT upstream: only the fork has the
+    # WS2812/multi-LED backend the shield configures
+    # (CONFIG_RGBLED_WIDGET_WS2812, _LED_COUNT, _BRIGHTNESS,
+    # _BATTERY_LED_INDEX / _CONN_LED_INDEX, _CONN_COLOR_BT0..BT4,
+    # _BATTERY_COLOR_CHARGING and _EXT_POWER_TIMEOUT_MS - see
+    # boards/shields/cornix_indicator/README.md).  Upstream only drives a
+    # single 3-GPIO RGB LED and does not define any of those symbols.
+    # Pinned to a commit rather than `main`: the LED index / colour meaning
+    # is what the shield's per-board .conf files depend on.
+    # a2b29334 = main as of 2026-08-19 ("Merge pull request #4 from
+    # hitsmaxft/perf/stop-idle-thread-polling").
+    - name: zmk-rgbled-widget
+      remote: hitsmaxft
+      revision: a2b29334b8598d7351c1f4429c5c083b2c0a3bc5
     - name: zmk-dongle-display
       remote: englmaxi
       revision: main
@@ -48,6 +60,27 @@ manifest:
       remote: cormoran
       revision: main
       clone-depth: 1
+    # Host OS detection (USB enumeration fingerprint + BLE GATT read pattern).
+    # Drives the automatic Base/Win layer switch, see config/cornix_left.conf.
+    # Pinned to a commit rather than `main`: the classifier thresholds are
+    # fingerprint heuristics that change meaning between commits.
+    # 3052679f = main as of 2026-07-19 ("Fold iOS into macOS over USB").
+    - name: zmk-feature-os-detection
+      remote: cormoran
+      revision: 3052679f645b8fc1997275c2eaa6b86bdd55ca01
+    # Dependency of zmk-feature-os-detection: its zephyr/module.yml lists
+    # `build: depends: [zmk-feature-custom-settings]`, and Zephyr's module
+    # resolver aborts the build ("Unmet or cyclic dependencies in modules")
+    # when a declared dependency is absent - even though we keep
+    # CONFIG_ZMK_CUSTOM_SETTINGS=n and it therefore compiles nothing.
+    # Listed explicitly instead of `import: true` on the module above so
+    # that it stays pinned and no extra remote is pulled in; the Studio RPC
+    # / Web UI parts that would actually need it require the cormoran ZMK
+    # fork, and we stay on upstream zmkfirmware/zmk main.
+    # c6a7fef3 = main as of 2026-07-23.
+    - name: zmk-feature-custom-settings
+      remote: cormoran
+      revision: c6a7fef3a3be3d3ace5de9a4b0628c6418cd1f3f
     #- name: zmk-dongle-screen
     #  remote: janpfischer
     #  revision: main
