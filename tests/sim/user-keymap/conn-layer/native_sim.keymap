@@ -1,0 +1,46 @@
+/*
+ * User keymap (config/cornix.keymap): the Conn layer (layer 5), added on
+ * 2026-09-22.  It has no key of its own - a `conditional_layers` node
+ * (`if-layers = <3 4>; then-layer = <5>;`) switches it on while Fn2
+ * (layer 3, position 46 = RC(3,10)) and Fn3 (layer 4, position 45 =
+ * RC(3,11)) are *both* held, i.e. while both right thumb Fn keys are down.
+ *
+ *   45 + 46, then 0  (Tab)  -> &out OUT_USB   on layer 5
+ *   45 + 46, then 12 (Caps) -> &out OUT_BLE   on layer 5
+ *   45 + 46, then 11 (Bksp) -> &trans on 5/4/3 -> &kp BSPC  0x2A on Base
+ *   45 + 46, then 44 (Spc)  -> &trans on 5/4/3 -> &kp SPACE 0x2C on Base
+ *   release 46              -> layer 5 goes away again (45 is still Fn3)
+ *
+ * native_sim has no USB device controller and no BLE, so `&out` cannot
+ * actually switch a transport here: what the snapshot pins down is that the
+ * conditional layer activates and deactivates at the right moments, that
+ * the two `&out` presses resolve on layer 5 (binding name `outputs`) and
+ * reach `zmk_endpoint_set_preferred_transport` with USB (1) then BLE (2),
+ * and that the ordinary keys fall through to Base while both thumbs are
+ * held.  `&bt BT_SEL` is not pressed: without CONFIG_ZMK_BLE the `bt`
+ * behavior has no driver on native_sim, so the press would only log
+ * "No behavior assigned" and fall through - a sim artefact, not the keymap.
+ */
+#include "../../_common/user_keymap.dtsi"
+
+&kscan {
+    events = <
+        ZMK_MOCK_PRESS(3,11,50)     /* position 45 = &mo 4 -> Fn3 */
+        ZMK_MOCK_PRESS(3,10,50)     /* position 46 = &mo 3 -> Fn2, and Conn (5) with it */
+
+        ZMK_MOCK_PRESS(0,0,30)      /* position 0  = &out OUT_USB on Conn */
+        ZMK_MOCK_RELEASE(0,0,30)
+
+        ZMK_MOCK_PRESS(1,0,30)      /* position 12 = &out OUT_BLE on Conn */
+        ZMK_MOCK_RELEASE(1,0,30)
+
+        ZMK_MOCK_PRESS(0,7,30)      /* position 11 = Backspace, falls through to Base */
+        ZMK_MOCK_RELEASE(0,7,30)
+
+        ZMK_MOCK_PRESS(3,12,30)     /* position 44 = Space, falls through to Base */
+        ZMK_MOCK_RELEASE(3,12,30)
+
+        ZMK_MOCK_RELEASE(3,10,50)   /* 46 up: Fn2 off, so Conn goes off too */
+        ZMK_MOCK_RELEASE(3,11,50)   /* 45 up: Fn3 off */
+    >;
+};

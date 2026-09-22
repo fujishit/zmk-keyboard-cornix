@@ -1,0 +1,5 @@
+s/.*conditional_layer_activate: layer /conditional layer on: /p
+s/.*conditional_layer_deactivate: layer /conditional layer off: /p
+s/.*zmk_keymap_apply_position_state: //p
+s/.*zmk_endpoint_set_preferred_transport: /endpoint: /p
+s/.*hid_listener_keycode_//p

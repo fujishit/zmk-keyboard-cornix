@@ -1,0 +1,57 @@
+/*
+ * User keymap (config/cornix.keymap) sensor-bindings:
+ *   encoder 0 (left)  -> &inc_dec_kp C_VOL_UP C_VOL_DN
+ *   encoder 1 (right) -> &inc_dec_msc SCRL_DOWN SCRL_UP
+ * (ZMK takes the clockwise action first; Vial stores [ccw, cw].)
+ *
+ * Left encoder: one slow step each way -> C_VOL_UP (0xE9) then C_VOL_DN
+ * (0xEA).  Same wiring as tests/sim/board-keymap/encoder.
+ *
+ * Right encoder: a *flick* of three detents each way, 20 ms apart - faster
+ * than the 24 ms `tap-ms` of `inc_dec_msc`, so the behaviour queue is the
+ * bottleneck and the snapshot shows whether it keeps up.  Expected: six
+ * `scroll_set` reports of 3 units each (0/-3 three times, then 0/3 three
+ * times), one per detent, each followed by the `0/0` that the input listener
+ * sends after every report (zmk/app/src/pointing/input_listener.c:329).
+ *
+ * Three units per detent is ZMK_POINTING_DEFAULT_SCRL_VAL = 188 landing on
+ * the first `&msc` tick, 16 ms after the press: 188 * 16 / 1000 = 3.008.
+ * See the comment above the #define in config/cornix.keymap.
+ */
+#include "../../_common/user_keymap.dtsi"
+
+/ {
+    mock_encoder_left: mock_encoder_left {
+        compatible = "zmk,sensor-encoder-mock";
+        status = "okay";
+        event-startup-delay = <200>;
+        event-period = <200>;
+        events = <18 (-18)>;   /* degrees; 360 / triggers-per-rotation = 18 per step */
+    };
+
+    mock_encoder_right: mock_encoder_right {
+        compatible = "zmk,sensor-encoder-mock";
+        status = "okay";
+        event-startup-delay = <800>;
+        event-period = <20>;
+        /* three detents clockwise, then three counter-clockwise, all 20 ms
+         * apart: t = 800, 820, 840 / 860, 880, 900 ms. */
+        events = <18 18 18 (-18) (-18) (-18)>;
+    };
+
+    sensors: sensors {
+        compatible = "zmk,keymap-sensors";
+        sensors = <&mock_encoder_left &mock_encoder_right>;
+        triggers-per-rotation = <20>;
+    };
+};
+
+&kscan {
+    /* The mock kscan ends the process after its last event, so a key is
+     * tapped to keep it alive: position 24 = &kp LSHFT, whose press/release
+     * are the first two lines of the snapshot. */
+    events = <
+        ZMK_MOCK_PRESS(2,0,10)
+        ZMK_MOCK_RELEASE(2,0,2000)
+    >;
+};

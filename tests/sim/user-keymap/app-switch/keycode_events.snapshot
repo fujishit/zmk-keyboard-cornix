@@ -1,0 +1,26 @@
+layer_id: 0 position: 45, binding name: momentary_layer
+layer_id: 4 position: 0, binding name: toggle_layer
+layer_id: 4 position: 0, binding name: toggle_layer
+layer_id: 0 position: 45, binding name: momentary_layer
+layer_id: 1 position: 41, binding name: key_press
+pressed: usage_page 0x07 keycode 0xE0 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 1 position: 0, binding name: app_tab
+mask mods: Modifiers set to 0x00
+pressed: usage_page 0x07 keycode 0xE2 implicit_mods 0x00 explicit_mods 0x00
+app switch: entered, masking mods 0x01, holding 0xE2
+pressed: usage_page 0x07 keycode 0x2B implicit_mods 0x00 explicit_mods 0x00
+released: usage_page 0x07 keycode 0x2B implicit_mods 0x00 explicit_mods 0x00
+layer_id: 1 position: 0, binding name: app_tab
+layer_id: 1 position: 0, binding name: app_tab
+pressed: usage_page 0x07 keycode 0x2B implicit_mods 0x00 explicit_mods 0x00
+released: usage_page 0x07 keycode 0x2B implicit_mods 0x00 explicit_mods 0x00
+layer_id: 1 position: 0, binding name: app_tab
+layer_id: 1 position: 41, binding name: key_press
+released: usage_page 0x07 keycode 0xE0 implicit_mods 0x00 explicit_mods 0x00
+released: usage_page 0x07 keycode 0xE2 implicit_mods 0x00 explicit_mods 0x00
+unmask mods: Modifiers set to 0x00
+app switch: left, released 0xE2
+layer_id: 1 position: 0, binding name: app_tab
+pressed: usage_page 0x07 keycode 0x2B implicit_mods 0x00 explicit_mods 0x00
+layer_id: 1 position: 0, binding name: app_tab
+released: usage_page 0x07 keycode 0x2B implicit_mods 0x00 explicit_mods 0x00

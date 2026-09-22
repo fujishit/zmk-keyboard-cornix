@@ -1,0 +1,19 @@
+/*
+ * User keymap (config/cornix.keymap): hold the `&mo 2` left thumb key and
+ * tap Q -> N1 from the Num layer.
+ *
+ * The Num layer is ZMK layer 2, not 1: the Win overlay sits at index 1, so
+ * the stock Vial `MO(1)` became `&mo 2` when the keymap was imported (see
+ * the config/cornix.keymap header).  `&mo 2` is on key position 42: the
+ * three left thumb keys are 41 (Cmd/Ctrl rest key), 42 (Num) and 43 (Fn3).
+ */
+#include "../../_common/user_keymap.dtsi"
+
+&kscan {
+    events = <
+        ZMK_MOCK_PRESS(3,4,10)     /* position 42 = &mo 2 (left thumb) */
+        ZMK_MOCK_PRESS(0,1,10)     /* position 1  = &kp Q on Base, &kp N1 on Num (layer 2) */
+        ZMK_MOCK_RELEASE(0,1,10)
+        ZMK_MOCK_RELEASE(3,4,10)
+    >;
+};

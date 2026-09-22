@@ -1,0 +1,24 @@
+zmk: os detection: USB fingerprint settled on 1
+zmk: os detection: USB fingerprint settled on 2
+zmk: os detection: USB fingerprint settled on 3
+zmk: os detection: USB fingerprint settled on 2
+layer_id: 0 position: 39, binding name: key_press
+pressed: usage_page 0x07 keycode 0xE3 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 0 position: 39, binding name: key_press
+released: usage_page 0x07 keycode 0xE3 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 0 position: 38, binding name: key_press
+pressed: usage_page 0x07 keycode 0xE0 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 0 position: 38, binding name: key_press
+released: usage_page 0x07 keycode 0xE0 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 0 position: 41, binding name: key_press
+pressed: usage_page 0x07 keycode 0xE3 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 0 position: 41, binding name: key_press
+released: usage_page 0x07 keycode 0xE3 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 0 position: 41, binding name: key_press
+pressed: usage_page 0x07 keycode 0xE3 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 0 position: 0, binding name: key_press
+pressed: usage_page 0x07 keycode 0x2B implicit_mods 0x00 explicit_mods 0x00
+layer_id: 0 position: 0, binding name: key_press
+released: usage_page 0x07 keycode 0x2B implicit_mods 0x00 explicit_mods 0x00
+layer_id: 0 position: 41, binding name: key_press
+released: usage_page 0x07 keycode 0xE3 implicit_mods 0x00 explicit_mods 0x00

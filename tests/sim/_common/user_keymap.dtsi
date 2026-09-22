@@ -1,0 +1,10 @@
+/*
+ * Test fixture: the user's keymap (config/cornix.keymap) on top of the mock
+ * kscan + Cornix physical layout.
+ *
+ * config/cornix.keymap includes "zmk-helpers/helper.h" (resolved through the
+ * zmk-helpers west module's dts_root) and "includes/cornix54.h" (resolved
+ * relative to config/), so it can be included unchanged from here.
+ */
+#include "cornix_mock.dtsi"
+#include "../../../config/cornix.keymap"

@@ -1,0 +1,34 @@
+layer_id: 0 position: 46, binding name: momentary_layer
+layer_id: 3 position: 1, binding name: key_press
+pressed: usage_page 0x07 keycode 0x3A implicit_mods 0x00 explicit_mods 0x00
+layer_id: 3 position: 1, binding name: key_press
+released: usage_page 0x07 keycode 0x3A implicit_mods 0x00 explicit_mods 0x00
+layer_id: 3 position: 0, binding name: key_press
+pressed: usage_page 0x07 keycode 0x45 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 3 position: 0, binding name: key_press
+released: usage_page 0x07 keycode 0x45 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 3 position: 18, binding name: key_press
+pressed: usage_page 0x07 keycode 0x4A implicit_mods 0x00 explicit_mods 0x00
+layer_id: 3 position: 18, binding name: key_press
+released: usage_page 0x07 keycode 0x4A implicit_mods 0x00 explicit_mods 0x00
+layer_id: 3 position: 21, binding name: key_press
+pressed: usage_page 0x07 keycode 0x4D implicit_mods 0x00 explicit_mods 0x00
+layer_id: 3 position: 21, binding name: key_press
+released: usage_page 0x07 keycode 0x4D implicit_mods 0x00 explicit_mods 0x00
+layer_id: 3 position: 19, binding name: key_press
+pressed: usage_page 0x07 keycode 0x4E implicit_mods 0x00 explicit_mods 0x00
+layer_id: 3 position: 19, binding name: key_press
+released: usage_page 0x07 keycode 0x4E implicit_mods 0x00 explicit_mods 0x00
+layer_id: 3 position: 20, binding name: key_press
+pressed: usage_page 0x07 keycode 0x4B implicit_mods 0x00 explicit_mods 0x00
+layer_id: 3 position: 20, binding name: key_press
+released: usage_page 0x07 keycode 0x4B implicit_mods 0x00 explicit_mods 0x00
+layer_id: 3 position: 22, binding name: key_press
+pressed: usage_page 0x07 keycode 0x46 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 3 position: 22, binding name: key_press
+released: usage_page 0x07 keycode 0x46 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 3 position: 36, binding name: key_press
+pressed: usage_page 0x07 keycode 0x49 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 3 position: 36, binding name: key_press
+released: usage_page 0x07 keycode 0x49 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 0 position: 46, binding name: momentary_layer

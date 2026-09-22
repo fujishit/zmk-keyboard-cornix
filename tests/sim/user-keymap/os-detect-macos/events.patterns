@@ -1,0 +1,3 @@
+/os detection: USB fingerprint settled on/p
+s/.*zmk_keymap_apply_position_state: //p
+s/.*hid_listener_keycode_//p

@@ -1,0 +1,11 @@
+/* Board default keymap: hold the `&mo 1` thumb key, tap Q -> N1 on lower_layer. */
+#include "../../_common/board_keymap.dtsi"
+
+&kscan {
+    events = <
+        ZMK_MOCK_PRESS(3,4,10)     /* position 42 = &mo 1 (left thumb) */
+        ZMK_MOCK_PRESS(0,1,10)     /* position 1  = Q on base, N1 on layer 1 */
+        ZMK_MOCK_RELEASE(0,1,10)
+        ZMK_MOCK_RELEASE(3,4,10)
+    >;
+};

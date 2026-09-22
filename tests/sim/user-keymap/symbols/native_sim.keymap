@@ -1,0 +1,39 @@
+/*
+ * User keymap (config/cornix.keymap): the programming symbols added to the
+ * Num layer on 2026-09-19.  The Base layer has no room for them, so they sit
+ * on layer 2, held with position 42 = RC(3,4).
+ *
+ *   42 + 13 (A) -> &kp GRAVE   ` (0x35)
+ *   42 + 20 (K) -> &kp LBKT    [ (0x2F)
+ *   42 + 21 (L) -> &kp RBKT    ] (0x30)
+ *   42 + 34 (,) -> &kp LBRC    { = shifted [ -> 0x2F with implicit_mods 0x02
+ *   42 + 35 (.) -> &kp RBRC    } = shifted ] -> 0x30 with implicit_mods 0x02
+ *
+ * LBRC/RBRC are `LS(LBKT)` / `LS(RBKT)` in ZMK's dt-bindings/zmk/keys.h, so
+ * the snapshot shows the *unshifted* usage with LEFT_SHIFT (0x02) as an
+ * implicit modifier - there is no separate HID usage for a curly brace.
+ */
+#include "../../_common/user_keymap.dtsi"
+
+&kscan {
+    events = <
+        ZMK_MOCK_PRESS(3,4,50)      /* position 42 = &mo 2 -> Num */
+
+        ZMK_MOCK_PRESS(1,1,30)      /* position 13 = &kp GRAVE */
+        ZMK_MOCK_RELEASE(1,1,30)
+
+        ZMK_MOCK_PRESS(1,10,30)     /* position 20 = &kp LBKT */
+        ZMK_MOCK_RELEASE(1,10,30)
+
+        ZMK_MOCK_PRESS(1,9,30)      /* position 21 = &kp RBKT */
+        ZMK_MOCK_RELEASE(1,9,30)
+
+        ZMK_MOCK_PRESS(2,10,30)     /* position 34 = &kp LBRC */
+        ZMK_MOCK_RELEASE(2,10,30)
+
+        ZMK_MOCK_PRESS(2,9,30)      /* position 35 = &kp RBRC */
+        ZMK_MOCK_RELEASE(2,9,30)
+
+        ZMK_MOCK_RELEASE(3,4,50)
+    >;
+};

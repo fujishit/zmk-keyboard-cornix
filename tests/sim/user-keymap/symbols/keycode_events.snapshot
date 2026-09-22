@@ -1,0 +1,22 @@
+layer_id: 0 position: 42, binding name: momentary_layer
+layer_id: 2 position: 13, binding name: key_press
+pressed: usage_page 0x07 keycode 0x35 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 2 position: 13, binding name: key_press
+released: usage_page 0x07 keycode 0x35 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 2 position: 20, binding name: key_press
+pressed: usage_page 0x07 keycode 0x2F implicit_mods 0x00 explicit_mods 0x00
+layer_id: 2 position: 20, binding name: key_press
+released: usage_page 0x07 keycode 0x2F implicit_mods 0x00 explicit_mods 0x00
+layer_id: 2 position: 21, binding name: key_press
+pressed: usage_page 0x07 keycode 0x30 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 2 position: 21, binding name: key_press
+released: usage_page 0x07 keycode 0x30 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 2 position: 34, binding name: key_press
+pressed: usage_page 0x07 keycode 0x2F implicit_mods 0x02 explicit_mods 0x00
+layer_id: 2 position: 34, binding name: key_press
+released: usage_page 0x07 keycode 0x2F implicit_mods 0x02 explicit_mods 0x00
+layer_id: 2 position: 35, binding name: key_press
+pressed: usage_page 0x07 keycode 0x30 implicit_mods 0x02 explicit_mods 0x00
+layer_id: 2 position: 35, binding name: key_press
+released: usage_page 0x07 keycode 0x30 implicit_mods 0x02 explicit_mods 0x00
+layer_id: 0 position: 42, binding name: momentary_layer

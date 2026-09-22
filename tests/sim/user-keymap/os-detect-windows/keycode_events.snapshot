@@ -1,0 +1,40 @@
+zmk: os detection: USB fingerprint settled on 1
+zmk: os detection: USB fingerprint settled on 2
+zmk: os detection: USB fingerprint settled on 3
+zmk: os detection: USB fingerprint settled on 2
+layer_id: 0 position: 45, binding name: momentary_layer
+layer_id: 4 position: 0, binding name: toggle_layer
+layer_id: 4 position: 0, binding name: toggle_layer
+layer_id: 0 position: 45, binding name: momentary_layer
+layer_id: 1 position: 39, binding name: transparent
+layer_id: 0 position: 39, binding name: key_press
+pressed: usage_page 0x07 keycode 0xE3 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 1 position: 39, binding name: transparent
+layer_id: 0 position: 39, binding name: key_press
+released: usage_page 0x07 keycode 0xE3 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 1 position: 38, binding name: transparent
+layer_id: 0 position: 38, binding name: key_press
+pressed: usage_page 0x07 keycode 0xE0 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 1 position: 38, binding name: transparent
+layer_id: 0 position: 38, binding name: key_press
+released: usage_page 0x07 keycode 0xE0 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 1 position: 41, binding name: key_press
+pressed: usage_page 0x07 keycode 0xE0 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 1 position: 41, binding name: key_press
+released: usage_page 0x07 keycode 0xE0 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 1 position: 41, binding name: key_press
+pressed: usage_page 0x07 keycode 0xE0 implicit_mods 0x00 explicit_mods 0x00
+layer_id: 1 position: 0, binding name: app_tab
+mask mods: Modifiers set to 0x00
+pressed: usage_page 0x07 keycode 0xE2 implicit_mods 0x00 explicit_mods 0x00
+pressed: usage_page 0x07 keycode 0x2B implicit_mods 0x00 explicit_mods 0x00
+released: usage_page 0x07 keycode 0x2B implicit_mods 0x00 explicit_mods 0x00
+layer_id: 1 position: 0, binding name: app_tab
+layer_id: 1 position: 0, binding name: app_tab
+pressed: usage_page 0x07 keycode 0x2B implicit_mods 0x00 explicit_mods 0x00
+released: usage_page 0x07 keycode 0x2B implicit_mods 0x00 explicit_mods 0x00
+layer_id: 1 position: 0, binding name: app_tab
+layer_id: 1 position: 41, binding name: key_press
+released: usage_page 0x07 keycode 0xE0 implicit_mods 0x00 explicit_mods 0x00
+released: usage_page 0x07 keycode 0xE2 implicit_mods 0x00 explicit_mods 0x00
+unmask mods: Modifiers set to 0x00

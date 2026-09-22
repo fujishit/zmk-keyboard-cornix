@@ -1,0 +1,6 @@
+/*
+ * Test fixture: the board's default keymap (boards/jzf/cornix/cornix.keymap)
+ * on top of the mock kscan + Cornix physical layout.
+ */
+#include "cornix_mock.dtsi"
+#include "../../../boards/jzf/cornix/cornix.keymap"

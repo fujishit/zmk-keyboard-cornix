@@ -1,0 +1,5 @@
+s/.*zmk_keymap_apply_position_state: //p
+s/.*hid_listener_keycode_//p
+s/.*app switch: /app switch: /p
+s/.*hid_masked_modifiers_set.*Modifiers set to /mask mods: Modifiers set to /p
+s/.*hid_masked_modifiers_clear.*Modifiers set to /unmask mods: Modifiers set to /p

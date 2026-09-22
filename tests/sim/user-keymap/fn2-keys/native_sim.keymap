@@ -1,0 +1,51 @@
+/*
+ * User keymap (config/cornix.keymap): the function row and the navigation
+ * cluster added to the Fn2 layer on 2026-09-19.  Fn2 is layer 3, held with
+ * position 46 = RC(3,10) (the right thumb key next to Fn3).
+ *
+ *   46 + 1  (Q)   -> &kp F1     0x3A
+ *   46 + 0  (Tab) -> &kp F12    0x45   (F12 sits before F1, so the rest of
+ *                                       the row lines up with N1..N0 on Num)
+ *   46 + 18 (H)   -> &kp HOME   0x4A
+ *   46 + 21 (L)   -> &kp END    0x4D
+ *   46 + 19 (J)   -> &kp PG_DN  0x4E
+ *   46 + 20 (K)   -> &kp PG_UP  0x4B
+ *   46 + 22 (\)   -> &kp PSCRN  0x46
+ *   46 + 36 (Up)  -> &kp INS    0x49
+ *
+ * HOME/PG_DN/PG_UP/END are on H/J/K/L so they follow the same left-down-up-
+ * right shape the arrow keys and the Fn3 mouse keys use.
+ */
+#include "../../_common/user_keymap.dtsi"
+
+&kscan {
+    events = <
+        ZMK_MOCK_PRESS(3,10,50)     /* position 46 = &mo 3 -> Fn2 */
+
+        ZMK_MOCK_PRESS(0,1,30)      /* position 1  = &kp F1 */
+        ZMK_MOCK_RELEASE(0,1,30)
+
+        ZMK_MOCK_PRESS(0,0,30)      /* position 0  = &kp F12 */
+        ZMK_MOCK_RELEASE(0,0,30)
+
+        ZMK_MOCK_PRESS(1,12,30)     /* position 18 = &kp HOME */
+        ZMK_MOCK_RELEASE(1,12,30)
+
+        ZMK_MOCK_PRESS(1,9,30)      /* position 21 = &kp END */
+        ZMK_MOCK_RELEASE(1,9,30)
+
+        ZMK_MOCK_PRESS(1,11,30)     /* position 19 = &kp PG_DN */
+        ZMK_MOCK_RELEASE(1,11,30)
+
+        ZMK_MOCK_PRESS(1,10,30)     /* position 20 = &kp PG_UP */
+        ZMK_MOCK_RELEASE(1,10,30)
+
+        ZMK_MOCK_PRESS(1,8,30)      /* position 22 = &kp PSCRN */
+        ZMK_MOCK_RELEASE(1,8,30)
+
+        ZMK_MOCK_PRESS(2,8,30)      /* position 36 = &kp INS */
+        ZMK_MOCK_RELEASE(2,8,30)
+
+        ZMK_MOCK_RELEASE(3,10,50)
+    >;
+};

@@ -1,0 +1,34 @@
+layer_id: 0 position: 45, binding name: momentary_layer
+layer_id: 4 position: 46, binding name: transparent
+layer_id: 0 position: 46, binding name: momentary_layer
+conditional layer on: 5
+layer_id: 5 position: 0, binding name: outputs
+endpoint: Selected endpoint transport 1
+layer_id: 5 position: 0, binding name: outputs
+layer_id: 5 position: 12, binding name: outputs
+endpoint: Selected endpoint transport 2
+layer_id: 5 position: 12, binding name: outputs
+layer_id: 5 position: 11, binding name: transparent
+layer_id: 4 position: 11, binding name: transparent
+layer_id: 3 position: 11, binding name: transparent
+layer_id: 0 position: 11, binding name: key_press
+pressed: usage_page 0x07 keycode 0x2A implicit_mods 0x00 explicit_mods 0x00
+layer_id: 5 position: 11, binding name: transparent
+layer_id: 4 position: 11, binding name: transparent
+layer_id: 3 position: 11, binding name: transparent
+layer_id: 0 position: 11, binding name: key_press
+released: usage_page 0x07 keycode 0x2A implicit_mods 0x00 explicit_mods 0x00
+layer_id: 5 position: 44, binding name: transparent
+layer_id: 4 position: 44, binding name: transparent
+layer_id: 3 position: 44, binding name: transparent
+layer_id: 0 position: 44, binding name: key_press
+pressed: usage_page 0x07 keycode 0x2C implicit_mods 0x00 explicit_mods 0x00
+layer_id: 5 position: 44, binding name: transparent
+layer_id: 4 position: 44, binding name: transparent
+layer_id: 3 position: 44, binding name: transparent
+layer_id: 0 position: 44, binding name: key_press
+released: usage_page 0x07 keycode 0x2C implicit_mods 0x00 explicit_mods 0x00
+layer_id: 4 position: 46, binding name: transparent
+layer_id: 0 position: 46, binding name: momentary_layer
+conditional layer off: 5
+layer_id: 0 position: 45, binding name: momentary_layer

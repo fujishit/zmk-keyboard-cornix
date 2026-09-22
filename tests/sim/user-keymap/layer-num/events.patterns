@@ -1,0 +1,2 @@
+s/.*hid_listener_keycode_//p
+s/.*mo_keymap_binding_/mo_/p

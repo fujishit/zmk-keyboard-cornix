@@ -1,0 +1,42 @@
+/*
+ * Shared devicetree glue for the Cornix host-simulation tests.
+ *
+ * ZMK's `native_sim//zmk_test_mock` board only provides a tiny 2x2
+ * `zmk,kscan-mock` node labelled `kscan` and no physical layout. This file
+ * attaches the board's real `layout_50` / `default_transform` (from
+ * boards/jzf/cornix/cornix-layouts.dtsi) to that mock kscan, so that mock
+ * events use the same RC(row, col) coordinates as the hardware matrix.
+ *
+ * Key position -> RC() cheat sheet (see cornix-layouts.dtsi):
+ *
+ *   left hand:  position p in row r (0..3), column c (0..5)  -> RC(r, c)
+ *   right hand: j = 0 is the innermost key (Y/H/N column)    -> RC(r, 12 - j)
+ *   centre keys: position 30 -> RC(2,6), position 31 -> RC(1,13)
+ *
+ *   pos  0..5  = RC(0,0)..RC(0,5)   pos  6..11 = RC(0,12)..RC(0,7)
+ *   pos 12..17 = RC(1,0)..RC(1,5)   pos 18..23 = RC(1,12)..RC(1,7)
+ *   pos 24..29 = RC(2,0)..RC(2,5)   pos 32..37 = RC(2,12)..RC(2,7)
+ *   pos 38..43 = RC(3,0)..RC(3,5)   pos 44..49 = RC(3,12)..RC(3,7)
+ *
+ * Include this from a case's native_sim.keymap (directly or via
+ * board_keymap.dtsi / user_keymap.dtsi) and then add
+ *   &kscan { events = < ZMK_MOCK_PRESS(row,col,delay_ms) ... >; };
+ */
+
+#include <dt-bindings/zmk/kscan_mock.h>
+#include "../../../boards/jzf/cornix/cornix-layouts.dtsi"
+
+/ {
+    chosen {
+        zmk,physical-layout = &layout_50;
+    };
+};
+
+&kscan {
+    rows = <4>;
+    columns = <14>;
+};
+
+&layout_50 {
+    kscan = <&kscan>;
+};

@@ -1,0 +1,80 @@
+layer_id: 0 position: 45, binding name: momentary_layer
+layer_id: 4 position: 8, binding name: mouse_move
+movement_set: Mouse movement set to 0/-1
+movement_set: Mouse movement set to 0/-2
+movement_set: Mouse movement set to 0/-2
+movement_set: Mouse movement set to 0/-3
+movement_set: Mouse movement set to 0/-3
+movement_set: Mouse movement set to 0/-4
+movement_set: Mouse movement set to 0/-4
+movement_set: Mouse movement set to 0/-5
+movement_set: Mouse movement set to 0/-5
+movement_set: Mouse movement set to 0/-6
+layer_id: 4 position: 8, binding name: mouse_move
+layer_id: 0 position: 45, binding name: momentary_layer
+layer_id: 0 position: 45, binding name: momentary_layer
+layer_id: 4 position: 41, binding name: mouse_key_press
+button_press: Button 0 count 1
+button_press: Mouse buttons set to 0x01
+layer_id: 4 position: 41, binding name: mouse_key_press
+button_release: Button 0 count: 0
+button_release: Button 0 released
+button_release: Mouse buttons set to 0x00
+layer_id: 0 position: 45, binding name: momentary_layer
+layer_id: 0 position: 45, binding name: momentary_layer
+layer_id: 4 position: 42, binding name: mouse_key_press
+button_press: Button 1 count 1
+button_press: Mouse buttons set to 0x02
+layer_id: 4 position: 42, binding name: mouse_key_press
+button_release: Button 1 count: 0
+button_release: Button 1 released
+button_release: Mouse buttons set to 0x00
+layer_id: 0 position: 45, binding name: momentary_layer
+layer_id: 0 position: 45, binding name: momentary_layer
+layer_id: 4 position: 43, binding name: mouse_key_press
+button_press: Button 2 count 1
+button_press: Mouse buttons set to 0x04
+layer_id: 4 position: 43, binding name: mouse_key_press
+button_release: Button 2 count: 0
+button_release: Button 2 released
+button_release: Mouse buttons set to 0x00
+layer_id: 0 position: 45, binding name: momentary_layer
+layer_id: 0 position: 45, binding name: momentary_layer
+layer_id: 4 position: 3, binding name: momentary_layer
+layer_id: 7 position: 8, binding name: transparent
+layer_id: 4 position: 8, binding name: mouse_move
+movement_set: Mouse movement set to 0/-2
+movement_set: Mouse movement set to 0/-4
+movement_set: Mouse movement set to 0/-4
+movement_set: Mouse movement set to 0/-6
+movement_set: Mouse movement set to 0/-6
+movement_set: Mouse movement set to 0/-8
+movement_set: Mouse movement set to 0/-8
+movement_set: Mouse movement set to 0/-10
+movement_set: Mouse movement set to 0/-10
+movement_set: Mouse movement set to 0/-12
+layer_id: 7 position: 8, binding name: transparent
+layer_id: 4 position: 8, binding name: mouse_move
+layer_id: 4 position: 3, binding name: momentary_layer
+layer_id: 0 position: 45, binding name: momentary_layer
+layer_id: 0 position: 45, binding name: momentary_layer
+layer_id: 4 position: 2, binding name: momentary_layer
+layer_id: 6 position: 8, binding name: transparent
+layer_id: 4 position: 8, binding name: mouse_move
+movement_set: Mouse movement set to 0/-1
+movement_set: Mouse movement set to 0/-1
+movement_set: Mouse movement set to 0/-2
+movement_set: Mouse movement set to 0/-1
+movement_set: Mouse movement set to 0/-2
+movement_set: Mouse movement set to 0/-2
+movement_set: Mouse movement set to 0/-3
+movement_set: Mouse movement set to 0/-2
+movement_set: Mouse movement set to 0/-3
+layer_id: 6 position: 8, binding name: transparent
+layer_id: 4 position: 8, binding name: mouse_move
+layer_id: 4 position: 2, binding name: momentary_layer
+layer_id: 0 position: 45, binding name: momentary_layer
+layer_id: 0 position: 49, binding name: key_press
+pressed: usage_page 0x07 keycode 0x4F implicit_mods 0x00 explicit_mods 0x00
+layer_id: 0 position: 49, binding name: key_press
+released: usage_page 0x07 keycode 0x4F implicit_mods 0x00 explicit_mods 0x00

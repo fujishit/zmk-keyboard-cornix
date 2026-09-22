@@ -1,0 +1,16 @@
+/*
+ * User keymap (config/cornix.keymap): the right inner extra key is
+ * `&mkp MCLK` (Vial KC_BTN3 at matrix cell (5,6)), key position 31 =
+ * RC(1,13).  The left inner extra key (position 30, RC(2,6)) is `&kp C_MUTE`
+ * and is pressed first to show both centre keys work.
+ */
+#include "../../_common/user_keymap.dtsi"
+
+&kscan {
+    events = <
+        ZMK_MOCK_PRESS(2,6,100)     /* position 30 = &kp C_MUTE */
+        ZMK_MOCK_RELEASE(2,6,10)
+        ZMK_MOCK_PRESS(1,13,100)    /* position 31 = &mkp MCLK */
+        ZMK_MOCK_RELEASE(1,13,10)
+    >;
+};

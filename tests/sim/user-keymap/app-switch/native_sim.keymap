@@ -1,0 +1,55 @@
+/*
+ * `&app_tab` - this module's `zmk,behavior-cornix-app-switch`
+ * (src/behavior_app_switch.c), on position 0 of the Win layer.
+ *
+ * What has to come out, and what the previous `zmk,behavior-mod-morph` to
+ * `&kp LA(TAB)` could not do: Alt has to stay *held* across several Tab taps,
+ * because that is what keeps the Windows switcher open and lets it step
+ * through the window list - the same shape as Cmd+Tab on macOS.  A mod-morph
+ * put LALT in the keypress's *implicit* modifiers, and
+ * hid_listener_keycode_released() releases those with the key
+ * (zmk/app/src/hid_listener.c, zmk_hid_implicit_modifiers_release()), so Alt
+ * went up on every tap and the switcher committed and closed.
+ *
+ * The Win layer is turned on with the keymap's own manual fallback, `&tog 1`
+ * on Fn3 (hold position 45 = RC(3,11), tap position 0), exactly as the
+ * os-detect-windows case does; OS detection itself cannot drive a layer on
+ * native_sim (see that case's header).
+ *
+ * The snapshot must show, in order:
+ *
+ *   1. hold 41       -> LCTRL (0xE0) pressed;
+ *   2. press 0       -> the Ctrl masked out of the report ("mask mods:
+ *                       Modifiers set to 0x00"), LALT (0xE2) pressed as a real
+ *                       modifier, then TAB (0x2B) pressed and released;
+ *   3. press 0 again -> TAB pressed and released again and *no* second 0xE2
+ *                       press: Alt never left the report;
+ *   4. release 41    -> LCTRL released first (the keymap listener runs before
+ *                       this module's, both being link-ordered), then 0xE2
+ *                       released, then the mask cleared;
+ *   5. press 0 with nothing held -> a plain `&kp TAB`, pressed on the press and
+ *                       released on the release, with no masking at all.
+ */
+#include "../../_common/user_keymap.dtsi"
+
+&kscan {
+    events = <
+        /* Win layer on: hold Fn3 (45) and tap position 0 = &tog 1 */
+        ZMK_MOCK_PRESS(3,11,10)
+        ZMK_MOCK_PRESS(0,0,10)
+        ZMK_MOCK_RELEASE(0,0,10)
+        ZMK_MOCK_RELEASE(3,11,10)
+
+        /* Hold 41 (LCTRL on the Win layer) and tap Tab twice */
+        ZMK_MOCK_PRESS(3,3,10)     /* position 41 -> LCTRL */
+        ZMK_MOCK_PRESS(0,0,10)     /* position 0 = &app_tab -> mask Ctrl, hold LALT, tap TAB */
+        ZMK_MOCK_RELEASE(0,0,10)
+        ZMK_MOCK_PRESS(0,0,10)     /* second step through the switcher: TAB only */
+        ZMK_MOCK_RELEASE(0,0,10)
+        ZMK_MOCK_RELEASE(3,3,10)   /* release 41 -> LALT released, Ctrl unmasked */
+
+        /* Tab on its own on the Win layer is still a plain &kp TAB */
+        ZMK_MOCK_PRESS(0,0,10)
+        ZMK_MOCK_RELEASE(0,0,50)
+    >;
+};

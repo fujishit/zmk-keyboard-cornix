@@ -1,0 +1,37 @@
+/*
+ * OS detection, macOS half: with layer 1 (Win) inactive the bottom-left keys
+ * keep their stock, Mac-oriented Base assignment - the physical LGUI key
+ * (position 39) and the left thumb rest key (position 41) send LGUI (0xE3)
+ * and the physical Ctrl key (position 38) sends LCTRL (0xE0).
+ *
+ * The same recorded fingerprints as the os-detect-windows case are injected
+ * (src/os_detection_usb.c, os_detection_test_inject_init runs all four
+ * scenarios in one process); the last one is the 2026-07-19 real Mac/iPhone
+ * capture, so the USB result the module ends up holding is ZMK_OS_MACOS (2),
+ * which this build maps to layer -1, i.e. "no layer" - Base.  See the
+ * os-detect-windows keymap for why the layer switch itself cannot run on
+ * native_sim.
+ *
+ * The last chord is app switching: holding position 41 and tapping position 0
+ * (Tab) has to send Cmd+Tab here, which needs no mod-morph - 41 is LGUI on
+ * Base and Tab is a plain `&kp TAB`.  The Windows counterpart of the same
+ * chord is in the os-detect-windows case.
+ */
+#include "../../_common/user_keymap.dtsi"
+
+&kscan {
+    events = <
+        ZMK_MOCK_PRESS(3,1,10)     /* position 39, the physical LGUI key */
+        ZMK_MOCK_RELEASE(3,1,10)
+        ZMK_MOCK_PRESS(3,0,10)     /* position 38, the physical LCTRL key */
+        ZMK_MOCK_RELEASE(3,0,10)
+        ZMK_MOCK_PRESS(3,3,10)     /* position 41, the left thumb rest key -> LGUI */
+        ZMK_MOCK_RELEASE(3,3,10)
+
+        /* 41 + Tab = Cmd+Tab (app switching) */
+        ZMK_MOCK_PRESS(3,3,10)     /* hold position 41 -> LGUI */
+        ZMK_MOCK_PRESS(0,0,10)     /* position 0 = &kp TAB */
+        ZMK_MOCK_RELEASE(0,0,10)
+        ZMK_MOCK_RELEASE(3,3,10)
+    >;
+};

@@ -1,0 +1,40 @@
+/*
+ * Board default keymap: rotate the left encoder (sensor 0) one step up then
+ * one step down -> C_VOLUME_UP / C_VOLUME_DOWN from the base layer's
+ * sensor-bindings. The right encoder (sensor 1) is present but idle so the
+ * two sensor-bindings in the keymap line up with two sensors, as on hardware.
+ */
+#include "../../_common/board_keymap.dtsi"
+
+/ {
+    mock_encoder_left: mock_encoder_left {
+        compatible = "zmk,sensor-encoder-mock";
+        status = "okay";
+        event-startup-delay = <200>;
+        event-period = <200>;
+        events = <18 (-18)>;   /* degrees; 360 / triggers-per-rotation = 18 per step */
+    };
+
+    mock_encoder_right: mock_encoder_right {
+        compatible = "zmk,sensor-encoder-mock";
+        status = "okay";
+        event-startup-delay = <200>;
+        event-period = <200>;
+        events = <0>;          /* no rotation */
+    };
+
+    sensors: sensors {
+        compatible = "zmk,keymap-sensors";
+        sensors = <&mock_encoder_left &mock_encoder_right>;
+        triggers-per-rotation = <20>;
+    };
+};
+
+&kscan {
+    /* Keep the process alive long enough for the encoder events; position 38
+     * is &trans on the base layer, so it produces no key events. */
+    events = <
+        ZMK_MOCK_PRESS(3,0,1000)
+        ZMK_MOCK_RELEASE(3,0,10)
+    >;
+};

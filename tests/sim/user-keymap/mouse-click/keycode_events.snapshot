@@ -1,0 +1,7 @@
+pressed: usage_page 0x0C keycode 0xE2 implicit_mods 0x00 explicit_mods 0x00
+released: usage_page 0x0C keycode 0xE2 implicit_mods 0x00 explicit_mods 0x00
+press: Button 2 count 1
+press: Mouse buttons set to 0x04
+release: Button 2 count: 0
+release: Button 2 released
+release: Mouse buttons set to 0x00

@@ -1,0 +1,4 @@
+mo_pressed: position 42 layer 2
+pressed: usage_page 0x07 keycode 0x1E implicit_mods 0x00 explicit_mods 0x00
+released: usage_page 0x07 keycode 0x1E implicit_mods 0x00 explicit_mods 0x00
+mo_released: position 42 layer 2

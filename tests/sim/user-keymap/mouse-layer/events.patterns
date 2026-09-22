@@ -1,0 +1,9 @@
+# Drop the two lines every HID mouse report emits regardless of this keymap:
+# the scroll half of the report and the "movement back to 0/0" that follows
+# each movement.  What is left is one line per *actual* pointer movement, so
+# the plain / MouseFast / MouseSlow runs can be compared by eye.
+/Mouse scroll set to/d
+/Mouse movement set to 0\/0$/d
+s/.*zmk_keymap_apply_position_state: //p
+s/.*hid_listener_keycode_//p
+s/.*hid_mouse_//p

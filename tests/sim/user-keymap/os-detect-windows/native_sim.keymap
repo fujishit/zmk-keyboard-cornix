@@ -1,0 +1,60 @@
+/*
+ * OS detection, Windows/Linux half: on the Win layer (layer 1) the shortcut
+ * modifier moves to the keys that carry Cmd on Base - the physical LGUI key
+ * (position 39) and the left thumb rest key (position 41) both send LCTRL
+ * (0xE0) - while the physical Ctrl key (position 38) is `&trans` and keeps
+ * sending LCTRL from Base, so Ctrl+Space toggles the IME on both operating
+ * systems.
+ *
+ * On hardware layer 1 is activated by zmk-feature-os-detection itself
+ * (src/os_detection_core.c, os_detection_layer_listener() calls
+ * zmk_keymap_layer_activate(CONFIG_ZMK_OS_DETECTION_LAYER_WINDOWS, false)).
+ * That cannot happen on native_sim: zmk_os_detection_current() only reports
+ * the USB result while the USB endpoint is *selected*, and native_sim has no
+ * USB host, so ZMK logs "Preferred endpoint transport is 1 but no transports
+ * are ready" and the endpoint stays NONE.  The injected fingerprints are
+ * still classified - the "USB fingerprint settled on 1" line in the snapshot
+ * is the recorded real Windows enumeration being recognised as ZMK_OS_WINDOWS
+ * (1), the OS this build maps to layer 1.
+ *
+ * So the layer itself is activated here through the manual fallback that is
+ * on the keymap for exactly this situation, `&tog 1` on Fn3, which ends up in
+ * the same zmk_keymap_layer_activate(1, false) call the module makes.  Fn3 is
+ * held with position 45 (`&mo 4`), the right thumb key next to Space.
+ *
+ * The last chord checks the app switcher: with the Win layer on, holding
+ * position 41 (LCTRL here) and tapping position 0 must send Alt+Tab, not
+ * Ctrl+Tab.  Position 0 is `&app_tab`, this module's
+ * `zmk,behavior-cornix-app-switch` (src/behavior_app_switch.c): it masks the
+ * held Ctrl out of the report, presses LALT (0xE2) as a *real* modifier and
+ * taps TAB (0x2B); a second tap of position 0 while 41 is still held taps TAB
+ * again without touching Alt, so the Windows switcher stays open and steps on;
+ * releasing 41 releases Alt.  So the snapshot shows `mask mods`, one 0xE2
+ * press, two TAB press/release pairs, no 0xE0 key press in between, and the
+ * 0xE2 release only after 41 goes up.  tests/sim/user-keymap/app-switch is the
+ * dedicated case for the same behavior (including the plain `&kp TAB` path).
+ */
+#include "../../_common/user_keymap.dtsi"
+
+&kscan {
+    events = <
+        ZMK_MOCK_PRESS(3,11,10)    /* position 45 = &mo 4  -> Fn3 */
+        ZMK_MOCK_PRESS(0,0,10)     /* position 0 on Fn3 = &tog 1 -> Win layer on */
+        ZMK_MOCK_RELEASE(0,0,10)
+        ZMK_MOCK_RELEASE(3,11,10)
+        ZMK_MOCK_PRESS(3,1,10)     /* position 39, the physical LGUI key -> LCTRL */
+        ZMK_MOCK_RELEASE(3,1,10)
+        ZMK_MOCK_PRESS(3,0,10)     /* position 38, the physical LCTRL key -> &trans, LCTRL */
+        ZMK_MOCK_RELEASE(3,0,10)
+        ZMK_MOCK_PRESS(3,3,10)     /* position 41, the left thumb rest key -> LCTRL */
+        ZMK_MOCK_RELEASE(3,3,10)
+
+        /* 41 + Tab = Alt+Tab (app switching) through &app_tab */
+        ZMK_MOCK_PRESS(3,3,10)     /* hold position 41 -> LCTRL */
+        ZMK_MOCK_PRESS(0,0,10)     /* position 0 = &app_tab -> mask Ctrl, hold LALT, tap TAB */
+        ZMK_MOCK_RELEASE(0,0,10)
+        ZMK_MOCK_PRESS(0,0,10)     /* one more step through the switcher: TAB only */
+        ZMK_MOCK_RELEASE(0,0,10)
+        ZMK_MOCK_RELEASE(3,3,10)   /* release 41 -> LALT released, Ctrl unmasked */
+    >;
+};
