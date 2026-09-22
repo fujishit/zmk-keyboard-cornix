@@ -1,0 +1,18 @@
+# Cornix remote bootloader-entry snippet.
+#
+# Kconfig only, so it stacks on top of `zmk-usb-logging` exactly like
+# `cornix-debug-log` does - and it *needs* that snippet (or any other build
+# with CONFIG_USB_CDC_ACM=y), because the trigger is a control request on the
+# CDC-ACM console port:
+#
+#   west build -b cornix_left//zmk \
+#       -S "zmk-usb-logging cornix-remote-boot" ...
+#
+# `cornix-debug-log` already enables CONFIG_CORNIX_REMOTE_BOOT itself, so the
+# usual debug recipes get this without naming the snippet; use the snippet on
+# its own for an image that should be flashable remotely but not chatty.
+#
+# Snippet format follows zmk/app/snippets/zmk-usb-logging/snippet.yml.
+name: cornix-remote-boot
+append:
+  EXTRA_CONF_FILE: cornix-remote-boot.conf
