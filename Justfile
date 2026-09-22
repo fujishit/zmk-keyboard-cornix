@@ -175,31 +175,55 @@ update-config:
 upgrade-sdk:
     nix flake update --flake .
 
+# run hardware-free static validation (stdlib python only)
+check:
+    python3 scripts/check_config.py
+
+# regenerate config/cheatsheet.html from config/cornix.keymap
+cheatsheet:
+    python3 scripts/cheatsheet.py
+
+# run static validation unit tests
+check-test:
+    python3 -m unittest discover -s tests/static -v
+
+# remote-flash without touching the keyboard (left debug image required): just remote-flash left firmware/led/x.uf2
+remote-flash side file:
+    python3 scripts/flash.py --enter {{ side }} {{ file }}
+
+# flash a UF2 to a half that is in bootloader mode (double-tap reset, or Fn3+T / Fn3+Y): just flash firmware/keymap/cornix_left.uf2 --label left
+flash *ARGS:
+    python3 scripts/flash.py {{ ARGS }}
+
+# edit config/cornix.keymap by position number: just remap show | just remap set --layer Base 22 '&kp MINUS'
+remap *ARGS:
+    python3 scripts/remap.py {{ ARGS }}
+
+# regenerate config/cornix.keymap from the Vial export (see the header of config/cornix.keymap for the exact options)
+vial2zmk *ARGS:
+    python3 scripts/vial2zmk.py {{ ARGS }}
+
+# model split-link key latency vs BLE peripheral latency (no hardware): just latency-model --sweep 0,4,8,30
+latency-model *ARGS:
+    python3 scripts/model/split_latency_model.py {{ ARGS }}
+
+# bootstrap the host-simulation workspace (.sim/: venv + west workspace, no hardware or SDK needed)
+sim-bootstrap:
+    scripts/sim/bootstrap.sh
+
+# run keymap tests on native_sim (all cases, or a subset: just sim-test tests/sim/user-keymap --verbose)
+sim-test *ARGS:
+    scripts/sim/run.sh {{ ARGS }}
+
+# bootstrap BabbleSim (32-bit libs + phy) for two-device BLE split simulation
+bsim-bootstrap:
+    scripts/bsim/bootstrap.sh
+
+# simulate the split BLE link (central + peripheral) and measure key latency per PREF_LATENCY: just bsim-test --latency 30,0
+bsim-test *ARGS:
+    scripts/bsim/run.sh {{ ARGS }}
+
+# legacy alias: run one native_sim test case (flags: --verbose --auto-accept --no-build)
 [no-cd]
 test $testpath *FLAGS:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    testcase=$(basename "$testpath")
-    build_dir="{{ build / "tests" / '$testcase' }}"
-    config_dir="{{ '$(pwd)' / '$testpath' }}"
-    cd {{ justfile_directory() }}
-
-    if [[ "{{ FLAGS }}" != *"--no-build"* ]]; then
-        echo "Running $testcase..."
-        rm -rf "$build_dir"
-        west build -s {{zmk_base}} -d "$build_dir" -b native_posix_64 -- \
-            -DCONFIG_ASSERT=y -DZMK_CONFIG="$config_dir"
-    fi
-
-    ${build_dir}/zephyr/zmk.exe | sed -e "s/.*> //" |
-        tee ${build_dir}/keycode_events.full.log |
-        sed -n -f ${config_dir}/events.patterns > ${build_dir}/keycode_events.log
-    diff -auZ ${config_dir}/keycode_events.snapshot ${build_dir}/keycode_events.log
-
-    if [[ "{{ FLAGS }}" == *"--verbose"* ]]; then
-        cat ${build_dir}/keycode_events.log
-    fi
-
-    if [[ "{{ FLAGS }}" == *"--auto-accept"* ]]; then
-        cp ${build_dir}/keycode_events.log ${config_dir}/keycode_events.snapshot
-    fi
+    "{{ justfile_directory() }}/scripts/sim/run.sh" "$(realpath "$testpath")" {{ FLAGS }}

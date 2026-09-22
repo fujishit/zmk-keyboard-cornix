@@ -1,0 +1,78 @@
+name: Hardware-free tests
+
+on:
+  push:
+    paths:
+      - "boards/**"
+      - "config/**"
+      - "snippets/**"
+      - "scripts/**"
+      - "tests/**"
+      - "build.yaml"
+      - "build-debug.yaml"
+      - ".github/workflows/test.yml"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  static:
+    name: Static config validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate boards, shields, build matrices and keymaps
+        run: python3 scripts/check_config.py
+      - name: Unit tests (static checker)
+        run: python3 -m unittest discover -s tests/static -v
+      - name: Unit tests (log analyzers)
+        run: python3 -m unittest discover -s tests/log -v
+      - name: Unit tests (split latency model)
+        run: python3 -m unittest discover -s tests/model -v
+      - name: Unit tests (Vial keymap converter)
+        run: python3 -m unittest discover -s tests/vial -v
+      - name: Unit tests (UF2 flash helper)
+        run: python3 -m unittest discover -s tests/flash -v
+      - name: Unit tests (keymap remap CLI)
+        run: python3 -m unittest discover -s tests/remap -v
+      - name: Unit tests (cheat sheet generator)
+        run: python3 -m unittest discover -s tests/cheatsheet -v
+      # tests/bsim needs BabbleSim (32-bit toolchain); it is run locally via
+      # `just bsim-test` and is not part of CI yet.
+
+  sim:
+    name: Keymap simulation (native_sim)
+    runs-on: ubuntu-latest
+    container:
+      image: docker.io/zmkfirmware/zmk-build-arm:stable
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: cornix
+      - name: Cache west workspace
+        uses: actions/cache@v4
+        with:
+          path: |
+            ws/modules
+            ws/zephyr
+            ws/zmk
+            ws/zmk-helpers
+          key: sim-ws-${{ hashFiles('cornix/config/west.yml') }}
+      - name: Prepare west workspace
+        # The repo root already contains a zephyr/ module directory, so the
+        # workspace topdir must be a separate directory (not the checkout).
+        run: |
+          mkdir -p ws
+          rm -rf ws/config && cp -r cornix/config ws/config
+          cd ws
+          if [ ! -d .west ]; then west init -l config; fi
+          west update --narrow --fetch-opt=--filter=tree:0
+          west zephyr-export
+      - name: Run simulation tests
+        run: SIM_WS="$GITHUB_WORKSPACE/ws" cornix/scripts/sim/run.sh --verbose
+      - name: Upload simulation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sim-logs
+          path: cornix/.build/sim/**/*.log
+          if-no-files-found: ignore
