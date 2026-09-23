@@ -247,3 +247,13 @@ grep -E "CONFIG_(NVS|SETTINGS_NVS|SETTINGS_NONE|ZMK_USB_LOGGING)=" ../../.build/
 
 Full instructions, the WSL2 `usbipd` note, and a split-latency / pairing-failure
 checklist are in [scripts/log/README.md](scripts/log/README.md).
+
+## Cheat sheet in CI
+
+`config/cheatsheet.html` is a committed, generated file. The
+`Keymap cheat sheet` workflow (`.github/workflows/cheatsheet.yml`) regenerates
+it on every push to `main` that touches the keymap, the layout or the
+generator, and commits the result back as `github-actions[bot]`; on a pull
+request it fails when the committed file is stale (`just cheatsheet` fixes
+that). The footer stamp is the keymap's last commit, not the wall clock, so
+two runs on the same keymap give byte-identical HTML.
