@@ -121,7 +121,7 @@ class ShowTest(TempKeymapTest):
         _status, out, _ = self.run_cli("show", "--layer", "Conn")
         self.assertIn(" 0 USB", out)  # &out OUT_USB
         self.assertIn("12 BLE", out)  # &out OUT_BLE
-        self.assertIn("24 BTCLR", out)  # &bt BT_CLR
+        self.assertIn("24 _", out)  # BT_CLR removed 2026-09-24
         self.assertIn(" 1 BT0", out)  # &bt BT_SEL 0
         self.assertIn("25 BT2", out)  # &bt BT_SEL 2
         self.assertIn("38 _", out)  # &trans
@@ -356,6 +356,16 @@ class CheckIntegrationTest(TempKeymapTest):
         self.assertEqual(cc.check_keymap(KEYMAP, remap.KEY_COUNT, warnings), [])
         self.assertEqual([w for w in warnings if "skipped" in w], [])
 
+    def test_layer_behaviors_come_from_check_config(self) -> None:
+        """One table, not three: remap and vial2zmk both use check_config's."""
+        self.assertIs(remap.LAYER_BEHAVIORS, cc.LAYER_BEHAVIORS)
+        for behavior in remap.LAYER_BEHAVIORS:
+            with self.subTest(behavior=behavior):
+                # A reference at or above the insert point moves up by one,
+                # one below it stays put.
+                self.assertEqual(remap.shift_layer_ref(f"&{behavior} 3", 2), f"&{behavior} 4")
+                self.assertEqual(remap.shift_layer_ref(f"&{behavior} 1", 2), f"&{behavior} 1")
+
 
 class RenderingTest(TempKeymapTest):
     def test_the_renderer_reproduces_the_bindings_blocks_it_parsed(self) -> None:
@@ -556,7 +566,7 @@ class KeymapContentTest(unittest.TestCase):
         conn = self.bindings["Conn"]
         self.assertEqual(conn[0], "&out OUT_USB")
         self.assertEqual(conn[12], "&out OUT_BLE")
-        self.assertEqual(conn[24], "&bt BT_CLR")
+        self.assertEqual(conn[24], "&trans")  # BT_CLR removed 2026-09-24
         self.assertEqual(conn[1], "&bt BT_SEL 0")
         self.assertEqual(conn[13], "&bt BT_SEL 1")
         self.assertEqual(conn[25], "&bt BT_SEL 2")

@@ -593,10 +593,10 @@ Recovery, in order:
 2. On the host, forget/remove the keyboard (macOS: System Settings >
    Bluetooth > (i) > Forget This Device).
 3. On the keyboard, clear the profile that was paired to that host: `&bt BT_CLR`
-   on the profile (the Cornix keymap has it on the Conn layer: hold both
-   right thumb Fn keys, 45 + 46, and tap position 24, the Shift position;
-   `BT_CLR_ALL`
-   wipes every profile). If the halves also lost each other, flash the
+   on the profile (`BT_CLR_ALL` wipes every profile). The Cornix keymap has no
+   BT_CLR key any more (removed 2026-09-24 as too easy to hit by accident):
+   put it back temporarily with `just remap set --layer Conn 24 '&bt BT_CLR'`,
+   flash, clear, and revert. If the halves also lost each other, flash the
    `settings_reset` UF2 (`cornix_reset` for the right half,
    `reset_nicenano_nosd` for a nice!nano dongle) to **each** affected role, let
    it boot once, then flash the real firmware.

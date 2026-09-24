@@ -51,7 +51,7 @@
  *  - Conn (layer 5) is where the connection switching lives, and it is only
  *    reachable through the `conditional_layers` node: hold both right thumb
  *    Fn keys, 45 (Fn3) and 46 (Fn2), and the leftmost column selects the
- *    connection - 0 = `&out OUT_USB`, 12 = `&out OUT_BLE`, 24 = `&bt BT_CLR`
+ *    connection - 0 = `&out OUT_USB`, 12 = `&out OUT_BLE`, 24 = `&trans` (BT_CLR removed 2026-09-24)
  *    (top = USB, second = Bluetooth, third = clear the bond) - while the
  *    column next to it, 1/13/25, is `&bt BT_SEL 0/1/2` on the same rows.
  *    Every other key on Conn is `&trans`, so Space, Enter, Backspace, the
@@ -376,13 +376,13 @@
 
             // | OUTUSB | BTSEL0 |  |  |  |  |  |  |  |  |  |  |  |  |
             // | OUTBLE | BTSEL1 |  |  |  |  |  |  |  |  |  |  |  |  |
-            // | BT_CLR | BTSEL2 |  |  |  |  |  |  |  |  |  |  |  |  |
+            // |        | BTSEL2 |  |  |  |  |  |  |  |  |  |  |  |  |
             // |        |        |  |  |  |  |  |  |  |  |  |  |  |  |
 
             bindings = <
 &out OUT_USB  &bt BT_SEL 0  &trans    &trans     &trans     &trans                            &trans     &trans          &trans          &trans           &trans     &trans
 &out OUT_BLE  &bt BT_SEL 1  &trans    &trans     &trans     &trans                            &trans     &trans          &trans          &trans           &trans     &trans
-&bt BT_CLR    &bt BT_SEL 2  &trans    &trans     &trans     &trans     &trans      &trans     &trans     &trans          &trans          &trans           &trans     &trans
+&trans        &bt BT_SEL 2  &trans    &trans     &trans     &trans     &trans      &trans     &trans     &trans          &trans          &trans           &trans     &trans
 &trans        &trans        &trans    &trans     &trans     &trans                            &trans     &trans          &trans          &trans           &trans     &trans
             >;
 

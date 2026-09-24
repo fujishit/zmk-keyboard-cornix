@@ -167,7 +167,7 @@ class CheatSheetTest(unittest.TestCase):
         self.assertIn("左クリック", self.doc.labels["Fn3"])
         self.assertIn("Win層", self.doc.labels["Fn3"])
         # 2026-09-22: the connection keys live on Conn (hold 45 + 46) only.
-        for wanted in ("USB へ", "BLE へ", "BT_CLR", "BT0", "BT1", "BT2"):
+        for wanted in ("USB へ", "BLE へ", "BT0", "BT1", "BT2"):
             self.assertIn(wanted, self.doc.labels["Conn"], f"Conn is missing {wanted!r}")
             self.assertNotIn(wanted, self.doc.labels["Fn2"], f"Fn2 still shows {wanted!r}")
             self.assertNotIn(wanted, self.doc.labels["Fn3"], f"Fn3 still shows {wanted!r}")
