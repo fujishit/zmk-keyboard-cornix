@@ -28,7 +28,7 @@ delay, +-1 ms):
   -85 dBm, retransmissions). Per hour: clean hours p50 5 / p95 9 ms delay, 0-1 reorder;
   21h p50 11.4 / p95 56.5 ms, 11 reorders.
 * 1 with a normal link: 10:42:43 `K` then `E`, gap 1.3 ms, delay 2.5 ms (practically a
-  chord); 21:17:58 `RET` then `A`, gap 2.4 ms, delay 15.6 ms.
+  chord); 21:17:58 `ENTER` then `A`, gap 2.4 ms, delay 15.6 ms.
 * Exposure with a normal link is low because the user rarely rolls across hands faster
   than 15 ms (6 of 849 pairs; 3 under 5 ms). But when it happens the odds are high: the
   probability that a right key is still in flight g ms after it was confirmed (n=2744,
