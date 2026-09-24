@@ -139,12 +139,18 @@ class PowerShellParseTest(unittest.TestCase):
         self.assertEqual(flash.parse_logical_disks(csv_text), [("E:", "")])
 
     def test_get_volume_labels_skip_the_unlettered_partition(self) -> None:
-        labels = flash.parse_get_volume(GET_VOLUME_CSV)
-        self.assertEqual(labels, {"C:": "Windows", "D:": "ボリューム", "E:": "CORNIX"})
+        volumes = flash.parse_get_volume(GET_VOLUME_CSV)
+        self.assertEqual({drive: label for drive, (label, _) in volumes.items()},
+                         {"C:": "Windows", "D:": "ボリューム", "E:": "CORNIX"})
 
     def test_get_volume_removable(self) -> None:
-        self.assertEqual(flash.parse_get_volume_removable(GET_VOLUME_CSV), [("E:", "CORNIX")])
-        self.assertEqual(flash.parse_get_volume_removable(GET_VOLUME_CSV_EMPTY), [])
+        def removable(csv_text: str) -> list[tuple[str, str]]:
+            return [(drive, label)
+                    for drive, (label, is_removable) in flash.parse_get_volume(csv_text).items()
+                    if is_removable]
+
+        self.assertEqual(removable(GET_VOLUME_CSV), [("E:", "CORNIX")])
+        self.assertEqual(removable(GET_VOLUME_CSV_EMPTY), [])
 
 
 class PathConversionTest(unittest.TestCase):
@@ -502,11 +508,10 @@ class EnterArgumentTest(unittest.TestCase):
         # src/remote_boot.c: RATE_LOCAL_BOOTLOADER / RATE_PERIPHERAL_BOOTLOADER
         # / RATE_RESET.  If these ever drift apart the device silently ignores
         # the rate, so pin them here.
-        self.assertEqual(flash.enter_baud("left"), 1200)
-        self.assertEqual(flash.enter_baud("right"), 2400)
-        self.assertEqual(flash.enter_baud("reset-left"), 4800)
-        with self.assertRaises(KeyError):
-            flash.enter_baud("dongle")
+        self.assertEqual(flash.ENTER_BAUDS["left"], 1200)
+        self.assertEqual(flash.ENTER_BAUDS["right"], 2400)
+        self.assertEqual(flash.ENTER_BAUDS["reset-left"], 4800)
+        self.assertNotIn("dongle", flash.ENTER_BAUDS)
 
     def test_parser_accepts_enter_targets(self) -> None:
         parser = flash.build_parser()
@@ -712,9 +717,10 @@ class CaptureReleaseTest(unittest.TestCase):
         self.assertEqual(flash.release_captures(self.tmp.name, pause=0, verbose=False), [])
 
     def test_read_pid(self) -> None:
-        self.assertEqual(flash.read_pid(self.pidfile("left", " 17 \n")), 17)
-        self.assertIsNone(flash.read_pid(self.pidfile("right", "-3")))
-        self.assertIsNone(flash.read_pid(os.path.join(self.tmp.name, "nope.pid")))
+        # flash.py reads the pidfiles with capture.py's own reader.
+        self.assertEqual(flash.capture.read_pidfile(self.pidfile("left", " 17 \n")), 17)
+        self.assertIsNone(flash.capture.read_pidfile(self.pidfile("right", "-3")))
+        self.assertIsNone(flash.capture.read_pidfile(os.path.join(self.tmp.name, "nope.pid")))
 
     def test_enter_releases_by_default(self) -> None:
         self.pidfile("left", "4242")
@@ -743,14 +749,12 @@ class PlatformTest(unittest.TestCase):
     def test_detect(self) -> None:
         with mock.patch.object(flash.platform, "system", return_value="Darwin"):
             self.assertEqual(flash.detect_platform(), "macos")
-        uname = mock.Mock(release="6.6.87.2-microsoft-standard-WSL2")
+        # WSL detection is capture.py's (/proc/version + WSL_DISTRO_NAME).
         with mock.patch.object(flash.platform, "system", return_value="Linux"), \
-                mock.patch.object(flash.platform, "uname", return_value=uname):
+                mock.patch.object(flash.capture, "is_wsl", return_value=True):
             self.assertEqual(flash.detect_platform(), "wsl")
-        uname = mock.Mock(release="6.1.0-18-amd64")
         with mock.patch.object(flash.platform, "system", return_value="Linux"), \
-                mock.patch.object(flash.platform, "uname", return_value=uname), \
-                mock.patch.object(os.path, "exists", return_value=False):
+                mock.patch.object(flash.capture, "is_wsl", return_value=False):
             self.assertEqual(flash.detect_platform(), "linux")
 
     def test_unsupported_platform_exits_2(self) -> None:

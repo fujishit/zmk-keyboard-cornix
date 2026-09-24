@@ -72,6 +72,16 @@ try:  # POSIX only; on WSL2 the port is touched through powershell.exe instead.
 except ImportError:  # pragma: no cover - non-POSIX
     fcntl = struct = termios = None  # type: ignore[assignment]
 
+# scripts/log/capture.py already knows how to detect WSL, find the ZMK console
+# port on every platform, hand a WSL path to powershell.exe and where a running
+# capture advertises its pid.  Duplicating any of that here would guarantee
+# the two scripts disagree eventually, so it is imported (both files ship
+# together).
+_CAPTURE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "log")
+if _CAPTURE_DIR not in sys.path:
+    sys.path.insert(0, _CAPTURE_DIR)
+import capture  # noqa: E402
+
 INFO_FILE = "INFO_UF2.TXT"
 FAIL_FILE = "FAIL.TXT"
 LABELS = ("left", "right", "dongle")
@@ -81,6 +91,9 @@ UF2_MAGIC = b"UF2\n"
 
 #: Seconds to wait for the bootloader volume to disappear after the copy.
 DEFAULT_SETTLE = 30.0
+
+#: Seconds between two looks for a volume that is expected to appear / vanish.
+POLL_INTERVAL = 0.5
 
 #: INFO_UF2.TXT keys worth showing, in the order the bootloader writes them.
 INFO_KEYS = ("Model", "Board-ID", "Bootloader", "Date", "SoftDevice")
@@ -96,16 +109,11 @@ ENTER_BAUDS = {
 }
 ENTER_TARGETS = tuple(ENTER_BAUDS)
 
-#: --enter targets that end in a bootloader (so a file argument can be flashed).
-ENTER_FLASHABLE = {"left": "left", "right": "right"}
-
 #: Seconds the port is held open at the magic rate before it is closed again.
 #: Long enough for the device to see SetLineCoding and short enough that the
 #: reboot (CONFIG_CORNIX_REMOTE_BOOT_DELAY_MS, 100 ms) happens after the close.
 DEFAULT_TOUCH_DWELL = 0.3
 
-#: Where capture.py advertises its pid (see scripts/log/capture.py).
-CAPTURE_PIDFILE_GLOB = "capture-*.pid"
 DEFAULT_LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logs")
 
 EPILOG = """
@@ -237,32 +245,22 @@ def parse_logical_disks(csv_text: str) -> list[tuple[str, str]]:
     return found
 
 
-def parse_get_volume(csv_text: str) -> dict[str, str]:
-    """Drive letter -> FileSystemLabel from `Get-Volume` CSV output.
+def parse_get_volume(csv_text: str) -> dict[str, tuple[str, bool]]:
+    """Drive letter -> (FileSystemLabel, is removable) from `Get-Volume` CSV output.
 
     Used to fill in a label Win32_LogicalDisk left empty, and as a fallback
     source of removable drives (`DriveType` is the string "Removable" here).
+    Unlettered volumes (the recovery partition) are skipped.
     """
-    labels: dict[str, str] = {}
+    volumes: dict[str, tuple[str, bool]] = {}
     for row in parse_powershell_csv(csv_text):
         letter = (row.get("DriveLetter") or "").strip().upper()
         if len(letter) != 1 or not letter.isalpha():
             continue
-        labels[letter + ":"] = (row.get("FileSystemLabel") or "").strip()
-    return labels
-
-
-def parse_get_volume_removable(csv_text: str) -> list[tuple[str, str]]:
-    """Removable drives from `Get-Volume` CSV output (DriveType "Removable")."""
-    found: list[tuple[str, str]] = []
-    for row in parse_powershell_csv(csv_text):
-        if (row.get("DriveType") or "").strip().lower() != "removable":
-            continue
-        letter = (row.get("DriveLetter") or "").strip().upper()
-        if len(letter) != 1 or not letter.isalpha():
-            continue
-        found.append((letter + ":", (row.get("FileSystemLabel") or "").strip()))
-    return found
+        label = (row.get("FileSystemLabel") or "").strip()
+        removable = (row.get("DriveType") or "").strip().lower() == "removable"
+        volumes[letter + ":"] = (label, removable)
+    return volumes
 
 
 def drive_mount_point(drive: str) -> str:
@@ -304,11 +302,6 @@ def is_com_name(port: str) -> bool:
     return text.startswith("COM") and text[3:].isdigit()
 
 
-def enter_baud(target: str) -> int:
-    """--enter target -> magic baud rate.  Raises KeyError on an unknown one."""
-    return ENTER_BAUDS[target]
-
-
 def _ps_serial_port_expr(com: str, baud: int) -> str:
     """The `New-Object System.IO.Ports.SerialPort` call for `com` at `baud`."""
     return (f"New-Object System.IO.Ports.SerialPort "
@@ -348,22 +341,8 @@ def termios_touch_speed(baud: int):
 
 
 def capture_pidfiles(log_dir: str) -> list[str]:
-    """Paths of the capture pidfiles in `log_dir`, sorted."""
-    return sorted(glob.glob(os.path.join(log_dir, CAPTURE_PIDFILE_GLOB)))
-
-
-def read_pid(path: str) -> int | None:
-    """The pid written in `path`, or None when missing/empty/garbage."""
-    try:
-        with open(path, encoding="ascii", errors="replace") as handle:
-            text = handle.read().strip()
-    except OSError:
-        return None
-    try:
-        pid = int(text)
-    except ValueError:
-        return None
-    return pid if pid > 0 else None
+    """Paths of the capture pidfiles in `log_dir` (one per label), sorted."""
+    return sorted(glob.glob(capture.pidfile_path(log_dir, "*")))
 
 
 def looks_like_uf2(head: bytes) -> bool:
@@ -466,73 +445,42 @@ def label_mismatch(filename: str, label: str | None) -> str | None:
 # platform / I/O
 # --------------------------------------------------------------------------
 def detect_platform() -> str:
-    """Return "wsl", "macos" or "linux"."""
+    """Return "wsl", "macos" or "linux" (WSL detection is capture.py's)."""
     system = platform.system()
     if system == "Darwin":
         return "macos"
     if system == "Linux":
-        release = platform.uname().release.lower()
-        if "microsoft" in release or os.path.exists("/proc/sys/fs/binfmt_misc/WSLInterop"):
-            return "wsl"
-        return "linux"
+        return "wsl" if capture.is_wsl() else "linux"
     return system.lower()
 
 
 def run_powershell(script: str, timeout: float = 30.0) -> tuple[int, str, str]:
-    """Run a PowerShell snippet on the Windows side of WSL2 and return (rc, out, err)."""
+    """Run a PowerShell snippet on the Windows side of WSL2 and return (rc, out, err).
+
+    capture.run_powershell_list only knows how to run its fixed COM-port
+    listing, so the arbitrary scripts this file needs (volume queries,
+    Copy-Item, the baud-rate touch) are spawned here.  Failures come back as
+    an exit status rather than an exception because every caller reports
+    them in its own words.
+    """
     command = [
-        "powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+        capture.PS_EXE, "-NoProfile", "-NonInteractive", "-Command",
         "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; " + script,
     ]
     try:
         proc = subprocess.run(command, capture_output=True, timeout=timeout)
     except FileNotFoundError:
-        return 127, "", "powershell.exe not found on PATH (is this really WSL2?)"
+        return 127, "", f"{capture.PS_EXE} not found on PATH (is this really WSL2?)"
     except subprocess.TimeoutExpired:
-        return 124, "", f"powershell.exe timed out after {timeout:g}s"
+        return 124, "", f"{capture.PS_EXE} timed out after {timeout:g}s"
     return (proc.returncode,
             proc.stdout.decode("utf-8", "replace"),
             proc.stderr.decode("utf-8", "replace"))
 
 
-def wsl_to_windows_path(path: str) -> str | None:
-    """`wslpath -w` - the Windows spelling of a WSL path, or None on failure."""
-    try:
-        proc = subprocess.run(["wslpath", "-w", path], capture_output=True, timeout=15)
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return None
-    if proc.returncode != 0:
-        return None
-    return proc.stdout.decode("utf-8", "replace").strip() or None
-
-
 def _ps_quote(value: str) -> str:
     """Quote a string for a PowerShell single-quoted literal."""
     return "'" + value.replace("'", "''") + "'"
-
-
-_capture_module = None
-
-
-def capture_module():
-    """Import scripts/log/capture.py once, for port detection and the pidfiles.
-
-    capture.py is the script that already knows how to find the ZMK console
-    port on every platform this repository supports; duplicating that here
-    would guarantee the two disagree eventually.  Returns None if it cannot be
-    imported (it never should be, both files ship together).
-    """
-    global _capture_module
-    if _capture_module is None:
-        log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "log")
-        if log_dir not in sys.path:
-            sys.path.insert(0, log_dir)
-        try:
-            import capture  # noqa: PLC0415 - deliberately lazy
-        except ImportError:
-            return None
-        _capture_module = capture
-    return _capture_module
 
 
 def release_captures(log_dir: str, pause: float = 2.0,
@@ -555,7 +503,7 @@ def release_captures(log_dir: str, pause: float = 2.0,
     kill = kill or os.kill
     signalled: list[str] = []
     for path in capture_pidfiles(log_dir):
-        pid = read_pid(path)
+        pid = capture.read_pidfile(path)
         if pid is None:
             continue
         try:
@@ -625,14 +573,13 @@ class Host:
             if self.verbose:
                 print(f"note: Get-Volume query failed ({rc2}): {err2.strip()}", file=sys.stderr)
             return drives
-        labels = parse_get_volume(out2)
+        volumes = parse_get_volume(out2)
         known = {drive for drive, _ in drives}
         # Get-Volume knows removable media Win32_LogicalDisk can miss, and has
         # the friendlier label; merge both views.
-        merged = [(drive, label or labels.get(drive, "")) for drive, label in drives]
-        for drive, label in parse_get_volume_removable(out2):
-            if drive not in known:
-                merged.append((drive, label))
+        merged = [(drive, label or volumes.get(drive, ("", False))[0]) for drive, label in drives]
+        merged.extend((drive, label) for drive, (label, removable) in volumes.items()
+                      if removable and drive not in known)
         return merged
 
     def _find_volumes_wsl(self) -> list[Volume]:
@@ -712,8 +659,11 @@ class Host:
         return False, ""
 
     def _copy_powershell(self, source: str, drive: str) -> tuple[bool, str]:
-        win_source = wsl_to_windows_path(os.path.abspath(source))
-        if not win_source:
+        source_path = os.path.abspath(source)
+        win_source = capture.to_windows_path(source_path)
+        if win_source == source_path:
+            # to_windows_path hands back its argument when wslpath is missing
+            # or fails; a WSL path is not something Copy-Item can open.
             raise RuntimeError("wslpath -w failed; cannot hand the file to Windows")
         script = (f"Copy-Item -LiteralPath {_ps_quote(win_source)} "
                   f"-Destination {_ps_quote(windows_root(drive))} -Force")
@@ -737,11 +687,7 @@ class Host:
         if port:
             return port, None
         if com:
-            capture = capture_module()
-            return (capture.normalize_com(com) if capture else com), None
-        capture = capture_module()
-        if capture is None:
-            return None, "cannot import scripts/log/capture.py for port auto-detection"
+            return capture.normalize_com(com), None
         if self.system == "wsl":
             try:
                 ports = capture.list_windows_com_ports()
@@ -831,7 +777,8 @@ def print_volume(volume: Volume, prefix: str = "found") -> None:
         print(f"       {line}")
 
 
-def wait_for_volumes(host: Host, timeout: float, interval: float = 0.5) -> list[Volume]:
+def wait_for_volumes(host: Host, timeout: float,
+                     interval: float = POLL_INTERVAL) -> list[Volume]:
     """Poll until at least one UF2 volume is present, or `timeout` runs out."""
     volumes = host.find_volumes()
     if volumes:
@@ -850,7 +797,8 @@ def wait_for_volumes(host: Host, timeout: float, interval: float = 0.5) -> list[
     return []
 
 
-def wait_until_gone(host: Host, volume: Volume, settle: float, interval: float = 0.5) -> bool:
+def wait_until_gone(host: Host, volume: Volume, settle: float,
+                    interval: float = POLL_INTERVAL) -> bool:
     deadline = time.monotonic() + settle
     while time.monotonic() < deadline:
         if not host.volume_present(volume):
@@ -939,7 +887,7 @@ def do_flash(host: Host, args: argparse.Namespace) -> int:
 def do_enter(host: Host, args: argparse.Namespace) -> int:
     """`--enter left|right|reset-left`: the 1200-bps-touch, then maybe a flash."""
     target = args.enter
-    baud = enter_baud(target)
+    baud = ENTER_BAUDS[target]
 
     if args.release:
         release_captures(args.log_dir, pause=args.release_pause)
@@ -984,7 +932,9 @@ def do_enter(host: Host, args: argparse.Namespace) -> int:
     if not args.file:
         return do_wait_only(host, args)
     if not args.label:
-        args.label = ENTER_FLASHABLE[target]
+        # Only "left" and "right" get here (reset-left returned above), and
+        # both name their own half.
+        args.label = target
     return do_flash(host, args)
 
 
@@ -1009,8 +959,8 @@ def normalize_argv(argv: list[str]) -> list[str]:
     CLI into subparsers (which would change every existing invocation).
     """
     if argv and argv[0] == "enter":
-        if len(argv) > 1 and argv[1] in ENTER_TARGETS:
-            return ["--enter", argv[1]] + list(argv[2:])
+        # The target (if any) is left in place for argparse to validate, so an
+        # unknown word still produces argparse's own "invalid choice" message.
         return ["--enter"] + list(argv[1:])
     return list(argv)
 
