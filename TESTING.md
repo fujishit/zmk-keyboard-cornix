@@ -5,7 +5,7 @@ keyboard. All of them run in CI (`.github/workflows/test.yml`) and locally.
 
 | Layer | What it catches | Needs | Command |
 |---|---|---|---|
-| Static validation | build matrix / defconfig / keymap / layout / metadata mistakes | Python 3 only | `just check` |
+| Static validation | build matrix / defconfig / keymap / layout / metadata mistakes | Python 3 only | `just check`, `just check-test` |
 | Keymap simulation | keymap behaviour (layers, hold-taps, combos, encoders) on the host | Python 3 + gcc (no SDK, no hardware) | `just sim-bootstrap` once, then `just sim-test` |
 | Split BLE simulation | key latency over the split link vs `CONFIG_ZMK_SPLIT_BLE_PREF_LATENCY` | BabbleSim (built by `just bsim-bootstrap`) | `just bsim-test` |
 | Latency model | what a given peripheral latency costs (delay vs radio wake-ups) | Python 3 only | `just latency-model --sweep 0,4,8,30` |
@@ -17,9 +17,19 @@ Runs in well under a second with the Python standard library only.
 
 ```sh
 just check              # python3 scripts/check_config.py
-just check-test         # python3 -m unittest discover -s tests/static -v
+just check-test         # scripts/unit_tests.sh: every suite under tests/
+just check-test static  # one suite only
 python3 scripts/check_config.py --json   # machine-readable output
 ```
+
+`scripts/unit_tests.sh` is the single list of unit-test suites — `static`,
+`log`, `model`, `vial`, `flash`, `remap`, `cheatsheet`, `bsim` — and both
+`just check-test` and `.github/workflows/test.yml` call it, so neither can
+grow a suite the other does not run. All of them are stdlib-only Python except
+`tests/bsim`, which is in the list but skips itself when BabbleSim is not
+installed (as on the CI runner); it is run with `BSIM_TEST_NO_BUILD=1` so that
+it reuses the executables `just bsim-test` built rather than rebuilding three
+nrf52_bsim images.
 
 Checks: qualified board names (`cornix_left//zmk`, `nice_nano//zmk`) in
 `build.yaml` and `build-debug.yaml`, shields/snippets exist, dongle shield

@@ -3,8 +3,18 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "boards/*"
-      - "config/*"
+      # Recursive: "boards/*" matched neither boards/jzf/cornix/* nor
+      # boards/shields/**, so a firmware change never triggered this build.
+      - "boards/**"
+      - "config/**"
+      - "src/**"
+      - "dts/**"
+      - "snippets/**"
+      - "zephyr/**"
+      - "Kconfig"
+      - "CMakeLists.txt"
+      - "build.yaml"
+      - ".github/workflows/build.yml"
     tags-ignore:
       - "*"
 

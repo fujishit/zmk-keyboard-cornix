@@ -183,9 +183,9 @@ check:
 cheatsheet:
     python3 scripts/cheatsheet.py
 
-# run static validation unit tests
-check-test:
-    python3 -m unittest discover -s tests/static -v
+# run every hardware-free unit-test suite (just check-test, or a subset: just check-test vial remap)
+check-test *SUITES:
+    scripts/unit_tests.sh {{ SUITES }}
 
 # remote-flash without touching the keyboard (left debug image required): just remote-flash left firmware/led/x.uf2
 remote-flash side file:

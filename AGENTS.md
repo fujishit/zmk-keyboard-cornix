@@ -20,7 +20,8 @@ correctness (`CONFIG_NVS=y`, `CONFIG_SETTINGS_NVS=y`, and no
 `CONFIG_SETTINGS_NONE=y`) after settings-related changes.
 
 Before reporting a change as done, run the hardware-free checks described in
-`TESTING.md`: `just check` (static validation, Python only) and, for keymap or
-behaviour changes, `just sim-test` (native_sim keymap simulation). Add or update
+`TESTING.md`: `just check` (static validation, Python only), `just check-test`
+(`scripts/unit_tests.sh`, every unit-test suite under `tests/`) and, for keymap
+or behaviour changes, `just sim-test` (native_sim keymap simulation). Add or update
 a case under `tests/sim/` when changing keymap behaviour, and extend
 `scripts/check_config.py` when adding a new configuration invariant.

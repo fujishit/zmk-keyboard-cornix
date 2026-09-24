@@ -8,6 +8,9 @@ on:
       - "snippets/**"
       - "scripts/**"
       - "tests/**"
+      - "src/**"
+      - "Kconfig"
+      - "CMakeLists.txt"
       - "build.yaml"
       - "build-debug.yaml"
       - ".github/workflows/test.yml"
@@ -22,22 +25,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate boards, shields, build matrices and keymaps
         run: python3 scripts/check_config.py
-      - name: Unit tests (static checker)
-        run: python3 -m unittest discover -s tests/static -v
-      - name: Unit tests (log analyzers)
-        run: python3 -m unittest discover -s tests/log -v
-      - name: Unit tests (split latency model)
-        run: python3 -m unittest discover -s tests/model -v
-      - name: Unit tests (Vial keymap converter)
-        run: python3 -m unittest discover -s tests/vial -v
-      - name: Unit tests (UF2 flash helper)
-        run: python3 -m unittest discover -s tests/flash -v
-      - name: Unit tests (keymap remap CLI)
-        run: python3 -m unittest discover -s tests/remap -v
-      - name: Unit tests (cheat sheet generator)
-        run: python3 -m unittest discover -s tests/cheatsheet -v
-      # tests/bsim needs BabbleSim (32-bit toolchain); it is run locally via
-      # `just bsim-test` and is not part of CI yet.
+      # The same list `just check-test` runs, so the two cannot drift apart.
+      # tests/bsim is in it but skips itself here: BabbleSim (32-bit
+      # toolchain) is not installed on the runner, so it only runs locally,
+      # via `just check-test` or `just bsim-test`.
+      - name: Unit tests (every suite under tests/)
+        run: scripts/unit_tests.sh
 
   sim:
     name: Keymap simulation (native_sim)
@@ -52,6 +45,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
+            ws/.west
             ws/modules
             ws/zephyr
             ws/zmk
@@ -60,12 +54,19 @@ jobs:
       - name: Prepare west workspace
         # The repo root already contains a zephyr/ module directory, so the
         # workspace topdir must be a separate directory (not the checkout).
+        #
+        # ws/.west is cached together with the projects, so a cache hit is a
+        # complete workspace and `west update` (several minutes of fetching)
+        # can be skipped.  `west zephyr-export` cannot: it writes the Zephyr
+        # CMake package into ~/.cache, which is outside the cache.
         run: |
           mkdir -p ws
           rm -rf ws/config && cp -r cornix/config ws/config
           cd ws
-          if [ ! -d .west ]; then west init -l config; fi
-          west update --narrow --fetch-opt=--filter=tree:0
+          if [ ! -d .west ]; then
+            west init -l config
+            west update --narrow --fetch-opt=--filter=tree:0
+          fi
           west zephyr-export
       - name: Run simulation tests
         run: SIM_WS="$GITHUB_WORKSPACE/ws" cornix/scripts/sim/run.sh --verbose
