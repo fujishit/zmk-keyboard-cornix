@@ -15,6 +15,12 @@ on:
       - "CMakeLists.txt"
       - "build.yaml"
       - ".github/workflows/build.yml"
+    # A push trigger that lists only tags-ignore never fires for branch
+    # pushes (GitHub: "if you define only tags/tags-ignore, the workflow
+    # won't run for events affecting branches"), which is why this build
+    # was only ever started by hand.  Name the branches explicitly.
+    branches:
+      - "**"
     tags-ignore:
       - "*"
 
