@@ -189,6 +189,7 @@ per-device numbers are produced.
 python3 scripts/log/analyze_latency.py --peripheral logs/right-*.log --central logs/left-*.log [--hist] [--verbose] [--json out.json]
 python3 scripts/log/analyze_ble.py logs/left-*.log [--json out.json]
 python3 scripts/log/analyze_latency.py logs/right-*.log     # single file
+python3 scripts/log/rssi_timeline.py logs/left-*.log [--bucket 300] [--json out.json]
 ```
 
 Output: one table `count / min / median / p95 / max` (ms) per stage, the BLE
@@ -196,6 +197,44 @@ connection parameters seen in the log (with the interval converted to ms and
 the worst-case peripheral-latency window), and grouped warnings/errors. Exit
 code 1 and the message `no matching events found - check that the debug
 snippet is enabled` when nothing matched.
+
+### Split-link signal strength
+
+`rssi_timeline.py` prints a per-minute median / min / max of the split link's
+RSSI from a **left-half** log, plus the reconnect-time RSSI of the peripheral
+in the same buckets, so a latency or drop-out episode can be lined up against
+the radio. It reads two kinds of line: `split rssi: -85 dBm (peer <addr>)`,
+logged at `INF` every `CONFIG_CORNIX_INDICATOR_SPLIT_RSSI_PERIOD_MS` (5 s) by
+`boards/shields/cornix_indicator/src/split_rssi.c` while the left half is
+USB-powered - the RSSI of the *live connection*, read with HCI Read RSSI - and
+`split_central_device_found: [DEVICE]: <addr>, ... RSSI -85`, one advertising
+packet seen while the link is *down*, filtered to the peripheral address taken
+from the `split_central_connected: Connected: <addr>` lines of the same log.
+Measured on this keyboard: -63..-70 dBm in the good state, -85..-89 dBm in the
+bad one (supervision timeouts every ~40 s); the connectivity LED of the left
+half shows the same -70 / -80 bands in green / yellow / red while on a cable.
+For a quick look without the script, the prefix is a plain grep handle:
+
+```sh
+# every sample, as "<timestamp> <dBm>"
+grep -h 'split rssi' logs/left-*.log \
+  | awk -F'split rssi: ' '{ split($2, a, " ")
+                            match($1, /[0-9]+:[0-9][0-9]:[0-9][0-9]\.[0-9]+/)
+                            print substr($1, RSTART, RLENGTH), a[1] }'
+
+# worst sample per minute (host clock if capture.py wrote one, device clock
+# otherwise - the first timestamp on the line either way)
+grep -h 'split rssi' logs/left-*.log \
+  | awk -F'split rssi: ' '{ split($2, a, " "); r = a[1] + 0
+                            match($1, /[0-9]+:[0-9][0-9]:[0-9][0-9]\./)
+                            m = substr($1, RSTART, 5)
+                            if (!(m in w) || r < w[m]) w[m] = r }
+                          END { for (m in w) print m, w[m] }' | sort
+```
+
+Needs a left-half build with `-DSHIELD=cornix_indicator` (the symbol is
+`default y` there on the central) captured at `INF` or lower; without it the
+script only has the reconnect-time scan samples to work with, and says so.
 
 ### What the latency analyzer keys on
 

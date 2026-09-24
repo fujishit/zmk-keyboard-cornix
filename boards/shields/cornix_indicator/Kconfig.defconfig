@@ -47,6 +47,38 @@ config CORNIX_INDICATOR_LEDS_ON_USB
 	  Needs RGBLED_WIDGET_WS2812 and a USB device stack; without either, the
 	  shield's CMakeLists.txt compiles nothing and this symbol is inert.
 
+config CORNIX_INDICATOR_SPLIT_RSSI
+	bool "Log and show the RSSI of the split link (central only)"
+	depends on ZMK_SPLIT_ROLE_CENTRAL && BT
+	default y
+	help
+	  While the half is USB-powered, src/split_rssi.c reads the connection
+	  RSSI of the split link (the central-role LE connection, i.e. the right
+	  half - the host link is peripheral role) with HCI Read RSSI and logs
+	  one line per sample at INF:
+
+	    split rssi: -67 dBm (peer C0:FF:EE:00:00:01 (random))
+
+	  That prefix is the grep handle scripts/log/rssi_timeline.py keys on.
+
+	  With CORNIX_INDICATOR_LEDS_ON_USB also enabled, the pinned connectivity
+	  LED shows the band instead of the profile colour: green at or above
+	  -70 dBm, yellow -70..-80, red below -80, magenta when the split link is
+	  down, and the profile colour until the first sample.
+
+	  Nothing runs on battery: the sampler stops itself when the cable is
+	  out.  The reply only arrives when the controller is built with
+	  BT_CTLR_CONN_RSSI (set in boards/cornix_left_nrf52840_zmk.conf);
+	  without it every read fails and the failure is logged once at DBG.
+
+config CORNIX_INDICATOR_SPLIT_RSSI_PERIOD_MS
+	int "Milliseconds between split-link RSSI samples"
+	depends on CORNIX_INDICATOR_SPLIT_RSSI
+	default 5000
+	help
+	  Also the delay before the first sample after boot or plug-in, which
+	  gives the split link time to come up instead of flashing "link down".
+
 endif # SHIELD_CORNIX_INDICATOR
 
 # vim: set ft=kconfig:

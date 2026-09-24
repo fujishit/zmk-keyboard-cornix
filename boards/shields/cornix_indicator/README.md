@@ -46,9 +46,11 @@ Builds clean against ZMK `main` + Zephyr 4.1 for `cornix_left//zmk`,
 | --- | --- |
 | `cornix_indicator.overlay` | enables `spi3`, `ws2812@0` and `EXT_POWER`, adds the `status-ws2812` alias |
 | `cornix_indicator.conf` | settings shared by both halves |
-| `Kconfig.defconfig` | this shield's own `CONFIG_CORNIX_INDICATOR_LEDS_ON_USB` symbol |
+| `Kconfig.defconfig` | this shield's own `CONFIG_CORNIX_INDICATOR_LEDS_ON_USB` and `CONFIG_CORNIX_INDICATOR_SPLIT_RSSI` symbols |
 | `CMakeLists.txt` | compiles `src/` into `app` when the shield is selected |
 | `src/leds_on_usb.c` | keeps the LEDs lit while the half is USB-powered |
+| `src/split_rssi.c` | samples and logs the split-link RSSI on the central, and colours the connectivity LED by it |
+| `src/split_rssi.h` | the two-function surface between those two files |
 | `boards/cornix_left_nrf52840_zmk.conf` | left half (central) LED assignment |
 | `boards/cornix_right_nrf52840_zmk.conf` | right half (peripheral) LED assignment |
 | `boards/cornix_ph_left_nrf52840_zmk.conf` | left half in dongle mode (peripheral) |
@@ -121,6 +123,10 @@ connectivity LED behaves like rows 10-11, with the dongle as the far end.
   which paints the battery LED magenta when a peripheral's battery cannot be
   read - is inert in WS2812 mode, because `indicate_battery_enhanced()` reads
   the local battery only. Fixing this properly means a patch to the module.
+  What *is* available instead, and is strictly more informative, is
+  `CONFIG_CORNIX_INDICATOR_SPLIT_RSSI` below: on USB power the left half's
+  connectivity LED shows how well it hears the right half, magenta when the
+  split link is down.
 * **Blink vs. pulse.** Where RMK blinked (hard on/off), the WS2812 backend
   mostly uses a breathing pulse. The animation type per status is hard-coded
   in `src/widget.c`; only colours and durations are configurable.
@@ -153,6 +159,7 @@ battery every lit millisecond is current.
 | connectivity LED, profile advertising | profile colour, breathing, **until the state changes** | profile colour, breathing, 5 s, then dark |
 | connectivity LED, profile lost | profile colour, 500 ms blink, **until the state changes** | profile colour, 500 ms blink, 3 s, then dark |
 | connectivity LED, peripheral half | link colour (blue), **steady / blinking indefinitely** | blue for 1.5 s (linked) or 3 s of blink (lost), then dark |
+| connectivity LED, central half, `SPLIT_RSSI` on | **split-link RSSI band**: green / yellow / red / magenta, steady, indefinitely | n/a (not sampled on battery) |
 | battery LED, charging below 99 % | green, breathing, indefinitely | n/a |
 | battery LED, at or above 99 % | **green, steady, indefinitely** | n/a |
 | battery LED, level report | n/a (a cable means charging) | level colour for 2 s (green / yellow / red), then dark; red breathes at or below 20 % |
@@ -210,6 +217,91 @@ the battery LED. Everything then expires and the rail is cut as before.
 `CONFIG_RGBLED_WIDGET_CONN_SHOW_USB` is `y` for this to be useful: it is what
 paints the USB endpoint cyan instead of black, and - less obviously - it is
 also what compiles the widget's `zmk_endpoint_changed` subscription at all.
+
+## Split-link RSSI (`CONFIG_CORNIX_INDICATOR_SPLIT_RSSI`)
+
+On the left half only (the split *central*), and only while USB-powered,
+`src/split_rssi.c` reads the received signal strength of the link to the right
+half and both logs it and shows it on the connectivity LED. It exists because
+the link quality was otherwise invisible: the one RSSI this firmware ever
+printed came from the scanner at reconnect time
+(`split_central_device_found: [DEVICE]: ... RSSI -85`), which is a single
+advertising packet at a moment when the link is by definition already down.
+
+### Colours
+
+While the LEDs are pinned (`CONFIG_CORNIX_INDICATOR_LEDS_ON_USB`, i.e. on a
+cable), the connectivity LED of the left half shows the band of the latest
+sample instead of the BT profile / USB colour:
+
+| Colour | Latest split-link RSSI |
+| --- | --- |
+| green | at or above **-70 dBm** - the healthy state (measured -63..-70) |
+| yellow | **-70 to -80 dBm** |
+| red | below **-80 dBm** - the state where the right half drops out (measured -85..-89, supervision timeouts every ~40 s) |
+| magenta | **split link down** - no central-role connection at all |
+| profile colour | no sample yet (the first one lands one period after plug-in) |
+
+That is the whole point of the feature: plug the left half in, then move the
+halves and the laptop around and watch the LED change band immediately. The
+LED is only re-pinned when the band changes, not on every sample.
+
+On battery nothing of this runs - no sampling, no logging, no LED - and the
+connectivity LED means exactly what the tables above say.
+
+### The log line
+
+One line per sample, at `INF`, on the left half:
+
+```
+[00:01:05.000,000] <inf> zmk: split rssi: -85 dBm (peer C0:FF:EE:00:00:01 (random))
+```
+
+The `split rssi:` prefix is a stable grep handle for the host tools; see
+`scripts/log/rssi_timeline.py`, which turns a captured left-half log into a
+per-minute median/min timeline. Failures (no split link, or a controller that
+does not answer the command) are logged **once** at `DBG`, not every tick.
+
+### Knobs
+
+| Symbol | Default | Meaning |
+| --- | --- | --- |
+| `CONFIG_CORNIX_INDICATOR_SPLIT_RSSI` | `y` (central + `BT` only) | compile and run the sampler |
+| `CONFIG_CORNIX_INDICATOR_SPLIT_RSSI_PERIOD_MS` | `5000` | ms between samples, and the delay before the first one after boot or plug-in |
+| `CONFIG_BT_CTLR_CONN_RSSI` | `y`, set in `boards/cornix_left_nrf52840_zmk.conf` | **required**: the controller only answers HCI Read RSSI with this |
+
+### How it works
+
+A `k_work_delayable` on the system work queue walks `bt_conn_foreach(
+BT_CONN_TYPE_LE, ...)` and keeps the connections whose `bt_conn_get_info()`
+role is `BT_CONN_ROLE_CENTRAL`. That is what picks the split link out: the left
+half is the *central* of the link it opened to the right half, and the
+*peripheral* of the link the Mac opened to it, so no ZMK-private table has to
+be reached into. For each, `bt_hci_get_conn_handle()` plus HCI Read RSSI
+(`BT_HCI_OP_READ_RSSI`, opcode 0x1405) through `bt_hci_cmd_create()` /
+`bt_hci_cmd_send_sync()` gives the number; with more than one peripheral the
+worst link is the one shown.
+
+`CONFIG_BT_CTLR_CONN_RSSI` is what makes the controller implement that command
+at all - `status_cmd_handle()` in
+`zephyr/subsys/bluetooth/controller/hci/hci.c` compiles the whole
+`BT_HCI_OP_READ_RSSI` case under it, and upstream only defaults it on for
+`BT_HCI_RAW` builds. Without it the first read fails, the failure is logged
+once at `DBG`, and the LED keeps the profile colour.
+
+The work item re-arms itself only while `zmk_usb_is_powered()`; on unplug it
+stops entirely (no timer is left armed) and the cached sample is cleared, and a
+`zmk_usb_conn_state_changed` subscription starts it again on the next plug-in.
+The sync HCI command blocks that one work item for one round trip to the
+on-chip controller, once per period.
+
+`src/split_rssi.h` is the surface between the two files: `split_rssi.c`
+exports `cornix_split_rssi_latest()` (dBm, 0 when unknown) and
+`cornix_split_rssi_link_up()`, which `leds_on_usb.c` runs through the shared
+`cornix_split_rssi_classify()` to pick the colour, and `leds_on_usb.c` exports
+`cornix_leds_on_usb_refresh()`, which `split_rssi.c` calls on a band change.
+Either file can be absent from a build; every call across the pair is wrapped
+in the matching `IS_ENABLED` guard.
 
 ## Power
 

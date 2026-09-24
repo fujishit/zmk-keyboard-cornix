@@ -22,3 +22,13 @@ if(CONFIG_CORNIX_INDICATOR_LEDS_ON_USB
    AND CONFIG_USB_DEVICE_STACK)
   target_sources(app PRIVATE src/leds_on_usb.c)
 endif()
+
+# src/split_rssi.c needs no LED at all - it is a logging feature first - but it
+# does need zmk_usb_is_powered(), which only exists with CONFIG_ZMK_USB
+# (zmk/app/src/usb.c).  Its Kconfig symbol already carries the
+# ZMK_SPLIT_ROLE_CENTRAL && BT part of the condition.  src/split_rssi.h is
+# found by both files through a plain quoted include, because it sits next to
+# them.
+if(CONFIG_CORNIX_INDICATOR_SPLIT_RSSI AND CONFIG_ZMK_USB)
+  target_sources(app PRIVATE src/split_rssi.c)
+endif()

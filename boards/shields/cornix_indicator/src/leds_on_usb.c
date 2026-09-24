@@ -55,6 +55,8 @@
 
 #include <zmk_rgbled_widget/widget.h>
 
+#include "split_rssi.h"
+
 LOG_MODULE_REGISTER(cornix_leds_on_usb, CONFIG_ZMK_LOG_LEVEL);
 
 /* "Central" here means the same thing it means inside the widget: a build that
@@ -124,6 +126,40 @@ static uint8_t connectivity_color(void) {
 #endif
 }
 
+#if IS_ENABLED(CONFIG_CORNIX_INDICATOR_SPLIT_RSSI)
+/* Override the connectivity colour with the quality of the split link.
+ *
+ * On the left half the connectivity LED otherwise repeats what the host
+ * endpoint already shows on screen, while the one thing that is invisible -
+ * how well the right half is heard - has no indicator at all
+ * (README.md, "What could not be matched", rows 7 and 8).  With
+ * src/split_rssi.c compiled in, the pinned colour becomes that instead:
+ *
+ *   green   >= -70 dBm   the "good" state (measured -63..-70)
+ *   yellow  -70..-80 dBm
+ *   red     <  -80 dBm   the "bad" state (measured -85..-89, timeouts)
+ *   magenta split link down (no central-role connection)
+ *   <fallback> no sample yet: the profile / USB colour, as before
+ *
+ * Only the *pinned* (USB-powered) colour changes; on battery this file does
+ * nothing at all and the widget's own rendering is untouched. */
+static uint8_t split_rssi_color(uint8_t fallback) {
+    switch (cornix_split_rssi_classify(cornix_split_rssi_latest(), cornix_split_rssi_link_up())) {
+    case CORNIX_SPLIT_RSSI_GOOD:
+        return WS2812_COLOR_GREEN;
+    case CORNIX_SPLIT_RSSI_FAIR:
+        return WS2812_COLOR_YELLOW;
+    case CORNIX_SPLIT_RSSI_POOR:
+        return WS2812_COLOR_RED;
+    case CORNIX_SPLIT_RSSI_DOWN:
+        return WS2812_COLOR_MAGENTA;
+    case CORNIX_SPLIT_RSSI_UNKNOWN:
+    default:
+        return fallback;
+    }
+}
+#endif /* CONFIG_CORNIX_INDICATOR_SPLIT_RSSI */
+
 /* Pin the connectivity LED to the colour of the *current* output.
  *
  * The animation that the widget last installed on that LED is deliberately
@@ -135,6 +171,10 @@ static uint8_t connectivity_color(void) {
  */
 static void pin_connectivity(void) {
     uint8_t color = connectivity_color();
+
+#if IS_ENABLED(CONFIG_CORNIX_INDICATOR_SPLIT_RSSI)
+    color = split_rssi_color(color);
+#endif
 
     if (color == 0) {
         return;
@@ -186,6 +226,21 @@ static void pin_work_cb(struct k_work *work) {
     pin_connectivity();
     pin_battery();
     pinned = true;
+}
+
+/* Re-run the pin path because something *outside* the widget's event stream
+ * changed what the LEDs should show - today only src/split_rssi.c, when a new
+ * sample moves the split-link RSSI into a different colour band.
+ *
+ * Nothing happens on battery: pin_work_cb() returns immediately without USB
+ * power, exactly as it does for every subscribed event.  The usual
+ * CORNIX_LED_PIN_DELAY_MS is kept rather than running now, so that a refresh
+ * cannot overtake a pin that a widget render has just scheduled. */
+void cornix_leds_on_usb_refresh(void) {
+    if (!zmk_usb_is_powered()) {
+        return;
+    }
+    k_work_reschedule(&pin_work, K_MSEC(CORNIX_LED_PIN_DELAY_MS));
 }
 
 /* USB has gone away: hand the LEDs back to the widget's timed behaviour.
