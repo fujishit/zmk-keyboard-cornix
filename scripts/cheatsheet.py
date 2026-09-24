@@ -2,8 +2,7 @@
 """Render ``config/cornix.keymap`` into a single self-contained cheat sheet.
 
     python3 scripts/cheatsheet.py            # -> config/cheatsheet.html
-    python3 scripts/cheatsheet.py --text     # the same labels, as plain text
-    python3 scripts/cheatsheet.py --stdout   # the HTML, to stdout
+    python3 scripts/cheatsheet.py -o /tmp/sheet.html
 
 The output is one HTML file with no external resources at all: the CSS is
 inline, every key diagram is an inline ``<svg>`` drawn from the *real* key
@@ -13,7 +12,7 @@ way the board actually is.  It works at phone width and on a desktop and
 follows ``prefers-color-scheme``.
 
 The keymap itself is not parsed here: ``scripts/remap.py`` already owns that
-(``remap.parse()``, ``remap._parts()``), and this script only turns its
+(``remap.parse_text()``, ``remap._parts()``), and this script only turns its
 bindings into human labels.  The footer carries the SHA-256 of the keymap file
 it was generated from, so a stale sheet is easy to spot.
 
@@ -29,6 +28,7 @@ import os
 import re
 import subprocess
 import sys
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -59,7 +59,7 @@ LAYER_BLURB = {
     "Fn3": "45（右親指）を押している間。マウス。",
     "Conn": "<kbd>45</kbd> と <kbd>46</kbd>（右親指の Fn キー 2 つ）を<strong>両方</strong>押している間だけ"
     "自動で重なる条件レイヤー（<code>conditional_layers</code>）。接続切り替え専用で、"
-    "左端の列が USB / BLE / ボンド消去、その隣の列が BT プロファイル 0 / 1 / 2。"
+    "左端の列が USB / BLE、その隣の列が BT プロファイル 0 / 1 / 2。"
     "それ以外のキーは下の層のまま。",
 }
 
@@ -117,14 +117,15 @@ def grace_seconds() -> str:
 
 def parse_layout(path: Path, node: str = "layout_50") -> list[PhysKey]:
     """Read the ``key_physical_attrs`` list of one ``zmk,physical-layout``."""
-    text = remap.mask(path.read_text(encoding="utf-8"))
+    text = path.read_text(encoding="utf-8")
+    masked = remap.mask(text)
     # `mask` blanks comments but keeps every offset, so slicing is safe.
-    start = text.find(f"{node}:")
+    start = masked.find(f"{node}:")
     if start < 0:
         raise SystemExit(f"{path}: no `{node}:` node")
-    keys_at = text.find("keys", start)
-    end = text.find(";", keys_at)
-    body = path.read_text(encoding="utf-8")[keys_at:end]
+    keys_at = masked.find("keys", start)
+    end = masked.find(";", keys_at)
+    body = text[keys_at:end]
     keys = [PhysKey(*(int(v) for v in m.groups())) for m in _ATTRS_RE.finditer(body)]
     if len(keys) != remap.KEY_COUNT:
         raise SystemExit(f"{path}: {node} has {len(keys)} keys, expected {remap.KEY_COUNT}")
@@ -166,10 +167,6 @@ def kp_label(code: str) -> str:
         return KP_LABEL[code]
     if re.fullmatch(r"N[0-9]", code):
         return code[1]
-    if re.fullmatch(r"F[0-9]{1,2}", code):
-        return code
-    if len(code) == 1:
-        return code
     return code
 
 
@@ -279,16 +276,12 @@ FONT_2 = 20.0
 FONT_MIN = 9.0
 FONT_NUM = 13.0
 
-_WIDE = ((0x1100, 0x115F), (0x2E80, 0xA4CF), (0xAC00, 0xD7A3), (0xF900, 0xFAFF),
-         (0xFE30, 0xFE6F), (0xFF00, 0xFF60), (0xFFE0, 0xFFE6))
-
-
 def _char_width(ch: str) -> float:
+    """Approximate advance of one character, in em (CJK is full width)."""
+    if unicodedata.east_asian_width(ch) in ("W", "F"):
+        return 1.0
     code = ord(ch)
-    for low, high in _WIDE:
-        if low <= code <= high:
-            return 1.0
-    if 0x2190 <= code <= 0x21FF or 0x2300 <= code <= 0x23FF:
+    if 0x2190 <= code <= 0x21FF or 0x2300 <= code <= 0x23FF:  # arrows, ⌫ ⏎
         return 0.8
     return 0.56
 
@@ -397,34 +390,9 @@ def esc(text: str) -> str:
     )
 
 
-CSS = """
-:root{
-  --bg:#fbfbfd;--fg:#1a1c20;--muted:#6b7280;--card:#ffffff;--line:#e2e5ea;
-  --accent:#2f5bd7;--warn:#a3320f;
-  --k-bg:#f3f4f7;--k-bd:#d5d9e0;--k-fg:#1a1c20;
-  --mod-bg:#e7eefc;--mod-bd:#b3c9f2;--mod-fg:#123073;
-  --layer-bg:#e7f6ea;--layer-bd:#a9ddb6;--layer-fg:#11522b;
-  --mouse-bg:#fdf1e2;--mouse-bd:#eecb9c;--mouse-fg:#6d3c06;
-  --conn-bg:#e2f3f6;--conn-bd:#a2d5de;--conn-fg:#0b4a53;
-  --danger-bg:#fde9e9;--danger-bd:#efb2b2;--danger-fg:#7c1414;
-  --misc-bg:#f2ebfb;--misc-bd:#d0badf;--misc-fg:#45177a;
-  --none-bg:#f7f7f9;--none-bd:#e7e9ee;--none-fg:#b2b7c0;
-  --inherit-bg:#fdfdfe;--inherit-bd:#dfe3ea;--inherit-fg:#9aa1ad;
-}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#14161a;--fg:#e7e9ee;--muted:#98a0ad;--card:#1b1e24;--line:#2c313a;
-  --accent:#8fb0ff;--warn:#ff9a7a;
-  --k-bg:#242830;--k-bd:#363c47;--k-fg:#e7e9ee;
-  --mod-bg:#1d2a45;--mod-bd:#33507f;--mod-fg:#bcd2ff;
-  --layer-bg:#16301f;--layer-bd:#2c5b3b;--layer-fg:#a9e6bd;
-  --mouse-bg:#332413;--mouse-bd:#5f452170;--mouse-fg:#f0c48a;
-  --conn-bg:#122e33;--conn-bd:#265760;--conn-fg:#9fdde7;
-  --danger-bg:#3a1719;--danger-bd:#6d2a2c;--danger-fg:#ffb3b3;
-  --misc-bg:#281a3a;--misc-bd:#4a3066;--misc-fg:#d7bdf5;
-  --none-bg:#1a1d22;--none-bd:#262b33;--none-fg:#4f5764;
-  --inherit-bg:#181b20;--inherit-bd:#2a2f38;--inherit-fg:#6b7482;
-}}
-:root[data-theme="dark"]{
+#: The dark palette, applied both for `prefers-color-scheme: dark` (unless the
+#: page opts out with `data-theme="light"`) and for an explicit `data-theme="dark"`.
+DARK_VARS = """\
   --bg:#14161a;--fg:#e7e9ee;--muted:#98a0ad;--card:#1b1e24;--line:#2c313a;
   --accent:#8fb0ff;--warn:#ff9a7a;
   --k-bg:#242830;--k-bd:#363c47;--k-fg:#e7e9ee;
@@ -436,66 +404,85 @@ CSS = """
   --misc-bg:#281a3a;--misc-bd:#4a3066;--misc-fg:#d7bdf5;
   --none-bg:#1a1d22;--none-bd:#262b33;--none-fg:#4f5764;
   --inherit-bg:#181b20;--inherit-bd:#2a2f38;--inherit-fg:#6b7482;
-}
-*{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--fg);
+"""
+
+CSS = f"""
+:root{{
+  --bg:#fbfbfd;--fg:#1a1c20;--muted:#6b7280;--card:#ffffff;--line:#e2e5ea;
+  --accent:#2f5bd7;--warn:#a3320f;
+  --k-bg:#f3f4f7;--k-bd:#d5d9e0;--k-fg:#1a1c20;
+  --mod-bg:#e7eefc;--mod-bd:#b3c9f2;--mod-fg:#123073;
+  --layer-bg:#e7f6ea;--layer-bd:#a9ddb6;--layer-fg:#11522b;
+  --mouse-bg:#fdf1e2;--mouse-bd:#eecb9c;--mouse-fg:#6d3c06;
+  --conn-bg:#e2f3f6;--conn-bd:#a2d5de;--conn-fg:#0b4a53;
+  --danger-bg:#fde9e9;--danger-bd:#efb2b2;--danger-fg:#7c1414;
+  --misc-bg:#f2ebfb;--misc-bd:#d0badf;--misc-fg:#45177a;
+  --none-bg:#f7f7f9;--none-bd:#e7e9ee;--none-fg:#b2b7c0;
+  --inherit-bg:#fdfdfe;--inherit-bd:#dfe3ea;--inherit-fg:#9aa1ad;
+}}
+@media (prefers-color-scheme:dark){{:root:not([data-theme="light"]){{
+{DARK_VARS}}}}}
+:root[data-theme="dark"]{{
+{DARK_VARS}}}
+*{{box-sizing:border-box}}
+html{{-webkit-text-size-adjust:100%}}
+body{{margin:0;background:var(--bg);color:var(--fg);
   font-family:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",
-  "Yu Gothic UI",Meiryo,sans-serif;line-height:1.7;font-size:15px}
-.wrap{max-width:1180px;margin:0 auto;padding:24px 16px 56px}
-h1{font-size:1.5rem;margin:0 0 4px;letter-spacing:.01em}
-h2{font-size:1.15rem;margin:0 0 10px}
-h3{font-size:.95rem;margin:0 0 8px;color:var(--muted);font-weight:600;
-  letter-spacing:.06em;text-transform:uppercase}
-p{margin:0 0 10px}
-.sub{color:var(--muted);margin:0 0 20px;font-size:.9rem}
-.cards{display:grid;gap:14px;grid-template-columns:1fr;margin-bottom:26px}
-@media (min-width:820px){.cards{grid-template-columns:1fr 1fr}
-  .cards .wide{grid-column:1 / -1}}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;
-  padding:14px 16px}
-dl.kv{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 12px;
-  align-items:baseline}
-dl.kv dt{font-weight:600;white-space:nowrap}
-dl.kv dd{margin:0;color:var(--fg)}
-table{width:100%;border-collapse:collapse;font-size:.85rem}
-th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);
-  vertical-align:top}
-th{color:var(--muted);font-weight:600;white-space:nowrap}
-tbody tr:last-child td{border-bottom:0}
-code,kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  font-size:.86em}
-kbd{background:var(--k-bg);border:1px solid var(--k-bd);border-radius:5px;
-  padding:1px 6px;white-space:nowrap}
-.danger{color:var(--warn);font-weight:600}
-section.layer{margin:0 0 26px;background:var(--card);border:1px solid var(--line);
-  border-radius:12px;padding:14px 16px}
-section.layer .blurb{color:var(--muted);font-size:.88rem;margin:0 0 10px}
-.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
-svg.kb{display:block;width:100%;min-width:780px;height:auto}
-.hint{color:var(--muted);font-size:.78rem;margin:2px 0 0}
-@media (min-width:860px){.hint{display:none}}
-.key .cap{fill:var(--k-bg);stroke:var(--k-bd);stroke-width:2}
-.key .kl{fill:var(--k-fg);text-anchor:middle;font-weight:600}
-.key .kn{fill:var(--muted);font-size:13px;opacity:.65}
-.k-mod .cap{fill:var(--mod-bg);stroke:var(--mod-bd)} .k-mod .kl{fill:var(--mod-fg)}
-.k-layer .cap{fill:var(--layer-bg);stroke:var(--layer-bd)} .k-layer .kl{fill:var(--layer-fg)}
-.k-mouse .cap{fill:var(--mouse-bg);stroke:var(--mouse-bd)} .k-mouse .kl{fill:var(--mouse-fg)}
-.k-conn .cap{fill:var(--conn-bg);stroke:var(--conn-bd)} .k-conn .kl{fill:var(--conn-fg)}
-.k-media .cap{fill:var(--conn-bg);stroke:var(--conn-bd)} .k-media .kl{fill:var(--conn-fg)}
-.k-danger .cap{fill:var(--danger-bg);stroke:var(--danger-bd);stroke-width:3}
-.k-danger .kl{fill:var(--danger-fg)}
-.k-misc .cap{fill:var(--misc-bg);stroke:var(--misc-bd)} .k-misc .kl{fill:var(--misc-fg)}
-.k-none .cap{fill:var(--none-bg);stroke:var(--none-bd)} .k-none .kl{fill:var(--none-fg)}
-.k-inherit .cap{fill:var(--inherit-bg);stroke:var(--inherit-bd);stroke-dasharray:5 4}
-.k-inherit .kl{fill:var(--inherit-fg);font-weight:400}
-ul.legend{list-style:none;display:flex;flex-wrap:wrap;gap:6px 10px;margin:0;padding:0;
-  font-size:.8rem}
-ul.legend li{display:flex;align-items:center;gap:5px;color:var(--muted)}
-ul.legend i{width:14px;height:14px;border-radius:4px;display:inline-block;
-  border:1px solid var(--line)}
-footer{margin-top:10px;color:var(--muted);font-size:.8rem;border-top:1px solid var(--line);
-  padding-top:12px;word-break:break-all}
+  "Yu Gothic UI",Meiryo,sans-serif;line-height:1.7;font-size:15px}}
+.wrap{{max-width:1180px;margin:0 auto;padding:24px 16px 56px}}
+h1{{font-size:1.5rem;margin:0 0 4px;letter-spacing:.01em}}
+h2{{font-size:1.15rem;margin:0 0 10px}}
+h3{{font-size:.95rem;margin:0 0 8px;color:var(--muted);font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase}}
+p{{margin:0 0 10px}}
+.sub{{color:var(--muted);margin:0 0 20px;font-size:.9rem}}
+.cards{{display:grid;gap:14px;grid-template-columns:1fr;margin-bottom:26px}}
+@media (min-width:820px){{.cards{{grid-template-columns:1fr 1fr}}
+  .cards .wide{{grid-column:1 / -1}}}}
+.card{{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:14px 16px}}
+dl.kv{{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 12px;
+  align-items:baseline}}
+dl.kv dt{{font-weight:600;white-space:nowrap}}
+dl.kv dd{{margin:0;color:var(--fg)}}
+table{{width:100%;border-collapse:collapse;font-size:.85rem}}
+th,td{{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);
+  vertical-align:top}}
+th{{color:var(--muted);font-weight:600;white-space:nowrap}}
+tbody tr:last-child td{{border-bottom:0}}
+code,kbd{{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:.86em}}
+kbd{{background:var(--k-bg);border:1px solid var(--k-bd);border-radius:5px;
+  padding:1px 6px;white-space:nowrap}}
+.danger{{color:var(--warn);font-weight:600}}
+section.layer{{margin:0 0 26px;background:var(--card);border:1px solid var(--line);
+  border-radius:12px;padding:14px 16px}}
+section.layer .blurb{{color:var(--muted);font-size:.88rem;margin:0 0 10px}}
+.scroll{{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}}
+svg.kb{{display:block;width:100%;min-width:780px;height:auto}}
+.hint{{color:var(--muted);font-size:.78rem;margin:2px 0 0}}
+@media (min-width:860px){{.hint{{display:none}}}}
+.key .cap{{fill:var(--k-bg);stroke:var(--k-bd);stroke-width:2}}
+.key .kl{{fill:var(--k-fg);text-anchor:middle;font-weight:600}}
+.key .kn{{fill:var(--muted);font-size:13px;opacity:.65}}
+.k-mod .cap{{fill:var(--mod-bg);stroke:var(--mod-bd)}} .k-mod .kl{{fill:var(--mod-fg)}}
+.k-layer .cap{{fill:var(--layer-bg);stroke:var(--layer-bd)}} .k-layer .kl{{fill:var(--layer-fg)}}
+.k-mouse .cap{{fill:var(--mouse-bg);stroke:var(--mouse-bd)}} .k-mouse .kl{{fill:var(--mouse-fg)}}
+.k-conn .cap{{fill:var(--conn-bg);stroke:var(--conn-bd)}} .k-conn .kl{{fill:var(--conn-fg)}}
+.k-media .cap{{fill:var(--conn-bg);stroke:var(--conn-bd)}} .k-media .kl{{fill:var(--conn-fg)}}
+.k-danger .cap{{fill:var(--danger-bg);stroke:var(--danger-bd);stroke-width:3}}
+.k-danger .kl{{fill:var(--danger-fg)}}
+.k-misc .cap{{fill:var(--misc-bg);stroke:var(--misc-bd)}} .k-misc .kl{{fill:var(--misc-fg)}}
+.k-none .cap{{fill:var(--none-bg);stroke:var(--none-bd)}} .k-none .kl{{fill:var(--none-fg)}}
+.k-inherit .cap{{fill:var(--inherit-bg);stroke:var(--inherit-bd);stroke-dasharray:5 4}}
+.k-inherit .kl{{fill:var(--inherit-fg);font-weight:400}}
+ul.legend{{list-style:none;display:flex;flex-wrap:wrap;gap:6px 10px;margin:0;padding:0;
+  font-size:.8rem}}
+ul.legend li{{display:flex;align-items:center;gap:5px;color:var(--muted)}}
+ul.legend i{{width:14px;height:14px;border-radius:4px;display:inline-block;
+  border:1px solid var(--line)}}
+footer{{margin-top:10px;color:var(--muted);font-size:.8rem;border-top:1px solid var(--line);
+  padding-top:12px;word-break:break-all}}
 """
 
 LEGEND = (
@@ -504,7 +491,6 @@ LEGEND = (
     ("layer-bg", "レイヤーキー"),
     ("mouse-bg", "マウス"),
     ("conn-bg", "接続・メディア"),
-    ("danger-bg", "危険（BT_CLR）"),
     ("misc-bg", "専用ビヘイビア"),
     ("inherit-bg", "下の層のまま"),
 )
@@ -576,14 +562,12 @@ def build_html(keymap: "remap.Keymap", keys: Sequence[PhysKey], digest: str,
 
     conn_rows = [
         ("<kbd>45</kbd>+<kbd>46</kbd> を両方押しながら…",
-         "Conn レイヤー。覚え方：<strong>左端の列</strong>が上から USB → Bluetooth → ボンド消去、"
+         "Conn レイヤー。覚え方：<strong>左端の列</strong>が上から USB → Bluetooth、"
          "<strong>その隣の列</strong>が上からプロファイル 0 → 1 → 2"),
         ("…<kbd>0</kbd>（Tab の位置）", "USB 出力に切り替え（<code>&amp;out OUT_USB</code>）"),
         ("…<kbd>12</kbd>（Caps の位置）", "BLE 出力に切り替え（<code>&amp;out OUT_BLE</code>）。"
                                           "USB 接続中は <strong>" + grace_seconds() + " 秒</strong>の"
                                           "猶予ウィンドウの間だけ広告が許される"),
-        ("…<kbd>24</kbd>（Shift の位置）",
-         '<span class="danger">BT_CLR</span>：今のプロファイルのボンドを消去（誤爆注意）'),
         ("…<kbd>1</kbd> / <kbd>13</kbd> / <kbd>25</kbd>（Q / A / Z の位置）",
          "BT プロファイル 0 / 1 / 2 を選択"),
         ("<kbd>45</kbd>+<kbd>0</kbd>", "Win レイヤーの手動トグル（OS 検出が外れたとき。Fn3 単独）"),
@@ -658,46 +642,15 @@ def build_html(keymap: "remap.Keymap", keys: Sequence[PhysKey], digest: str,
 
 
 # ---------------------------------------------------------------------------
-# Plain text (for reviewing without a browser)
-# ---------------------------------------------------------------------------
-
-
-def _pad(text: str, width: int) -> str:
-    """Left-align to ``width`` display columns (CJK counts as two)."""
-    shown = sum(2 if _char_width(ch) >= 1.0 else 1 for ch in text)
-    return text + " " * max(1, width - shown)
-
-
-def text_sheet(keymap: "remap.Keymap", layers: Sequence[str] = DRAWN_LAYERS) -> str:
-    out: list[str] = []
-    by_name = {layer.display_name: layer for layer in keymap.layers}
-    for name in layers:
-        layer = by_name.get(name)
-        if layer is None:
-            continue
-        cells = cells_for(keymap, layer)
-        out.append(f"== {name} (layer {layer.index}) ==")
-        for row, slots in enumerate(remap.ROW_SLOTS):
-            first = sum(len(s) for s in remap.ROW_SLOTS[:row])
-            chunks = [
-                _pad(f"{cells[first + offset].position:2d} {cells[first + offset].label}", 13)
-                for offset in range(len(slots))
-            ]
-            half = len(chunks) // 2
-            out.append("  " + " ".join(chunks[:half]) + " |  " + " ".join(chunks[half:]))
-        out.append("")
-    return "\n".join(out)
-
-
-# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
 
 def generate(keymap_path: Path, layout_path: Path) -> str:
-    keymap = remap.parse(keymap_path)
+    raw = keymap_path.read_bytes()  # read once: parsed here, hashed for the footer
+    keymap = remap.parse_text(raw.decode("utf-8"), keymap_path)
     keys = parse_layout(layout_path)
-    digest = hashlib.sha256(keymap_path.read_bytes()).hexdigest()
+    digest = hashlib.sha256(raw).hexdigest()
     return build_html(keymap, keys, digest, source_stamp(keymap_path))
 
 
@@ -732,19 +685,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--keymap", type=Path, default=DEFAULT_KEYMAP)
     parser.add_argument("--layout", type=Path, default=DEFAULT_LAYOUT)
     parser.add_argument("-o", "--output", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument("--stdout", action="store_true", help="write the HTML to stdout")
-    parser.add_argument("--text", action="store_true",
-                        help="print the key labels as plain text instead")
     args = parser.parse_args(argv)
 
-    if args.text:
-        print(text_sheet(remap.parse(args.keymap)))
-        return 0
-
     html_text = generate(args.keymap, args.layout)
-    if args.stdout:
-        sys.stdout.write(html_text)
-        return 0
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(html_text, encoding="utf-8")
     size = len(html_text.encode("utf-8"))
