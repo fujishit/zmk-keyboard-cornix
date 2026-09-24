@@ -47,26 +47,6 @@ config CORNIX_INDICATOR_LEDS_ON_USB
 	  Needs RGBLED_WIDGET_WS2812 and a USB device stack; without either, the
 	  shield's CMakeLists.txt compiles nothing and this symbol is inert.
 
-config CORNIX_INDICATOR_LEDS_ON_USB_DELAY_MS
-	int "Delay in ms between an event and re-asserting the LEDs"
-	depends on CORNIX_INDICATOR_LEDS_ON_USB
-	default 250
-	help
-	  The pin has to land after the widget has rendered the new state, and
-	  the widget debounces connectivity by 16 ms and, on an activity change,
-	  first clears every LED.  It also debounces bursts of endpoint / profile
-	  events into a single update.
-
-config CORNIX_INDICATOR_LEDS_ON_USB_BOOT_DELAY_MS
-	int "Delay in ms between boot and the first re-assert"
-	depends on CORNIX_INDICATOR_LEDS_ON_USB
-	default 4000
-	help
-	  The widget's init thread starts 200 ms after boot and shows the battery
-	  for RGBLED_WIDGET_BATTERY_BLINK_MS + RGBLED_WIDGET_INTERVAL_MS before
-	  it shows connectivity, so the first pin must wait for that whole
-	  sequence (2.9 s with this shield's settings).
-
 endif # SHIELD_CORNIX_INDICATOR
 
 # vim: set ft=kconfig:

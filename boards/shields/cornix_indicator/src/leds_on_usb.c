@@ -66,7 +66,27 @@ LOG_MODULE_REGISTER(cornix_leds_on_usb, CONFIG_ZMK_LOG_LEVEL);
  * pack full.  Hard-coded there, mirrored here. */
 #define CORNIX_LED_BATTERY_FULL_PCT 99
 
+/* Delay between an event and re-asserting the LEDs: the pin has to land after
+ * the widget has rendered the new state, and the widget debounces connectivity
+ * by 16 ms and, on an activity change, first clears every LED.  It also
+ * debounces bursts of endpoint / profile events into a single update. */
+#define CORNIX_LED_PIN_DELAY_MS 250
+
+/* Delay between boot and the first re-assert: the widget's init thread starts
+ * 200 ms after boot and shows the battery for RGBLED_WIDGET_BATTERY_BLINK_MS +
+ * RGBLED_WIDGET_INTERVAL_MS before it shows connectivity, so the first pin
+ * must wait for that whole sequence (2.9 s with this shield's settings). */
+#define CORNIX_LED_BOOT_DELAY_MS 4000
+
 static struct k_work_delayable pin_work;
+
+/* True while we hold the LEDs (pin_work_cb has run with USB power).  It is
+ * what makes release() a *transition*: without it every subscribed event on
+ * battery - each ZMK_ACTIVITY_IDLE, each 1 % battery step - would re-light the
+ * connectivity LED and re-arm the ext_power rail the widget has just shut
+ * down.  The intent is "pin while USB powered, otherwise leave the widget
+ * alone". */
+static bool pinned;
 
 /* Set when the widget has just blanked every LED itself (its activity handler
  * clears the strip and cuts ext_power on ZMK_ACTIVITY_IDLE), so the next pin
@@ -165,6 +185,7 @@ static void pin_work_cb(struct k_work *work) {
 
     pin_connectivity();
     pin_battery();
+    pinned = true;
 }
 
 /* USB has gone away: hand the LEDs back to the widget's timed behaviour.
@@ -204,10 +225,14 @@ static int leds_on_usb_listener(const zmk_event_t *eh) {
         /* Always *re*schedule: the widget renders the new state from its own
          * (16 ms debounced) work item, and on an activity change it first
          * clears every LED, so the pin has to land last. */
-        k_work_reschedule(&pin_work, K_MSEC(CONFIG_CORNIX_INDICATOR_LEDS_ON_USB_DELAY_MS));
+        k_work_reschedule(&pin_work, K_MSEC(CORNIX_LED_PIN_DELAY_MS));
+    } else if (pinned) {
+        /* Only on the pinned -> unpinned transition: see `pinned`. */
+        k_work_cancel_delayable(&pin_work);
+        pinned = false;
+        release();
     } else {
         k_work_cancel_delayable(&pin_work);
-        release();
     }
 
     return 0;
@@ -228,12 +253,9 @@ ZMK_SUBSCRIPTION(cornix_leds_on_usb, zmk_split_peripheral_status_changed);
 ZMK_SUBSCRIPTION(cornix_leds_on_usb, zmk_battery_state_changed);
 #endif
 
-/* Boot: the widget's own init thread starts 200 ms after boot and spends
- * BATTERY_BLINK_MS + INTERVAL_MS showing the battery before it shows
- * connectivity, so the first pin has to wait for all of that. */
 static int leds_on_usb_init(void) {
     k_work_init_delayable(&pin_work, pin_work_cb);
-    k_work_schedule(&pin_work, K_MSEC(CONFIG_CORNIX_INDICATOR_LEDS_ON_USB_BOOT_DELAY_MS));
+    k_work_schedule(&pin_work, K_MSEC(CORNIX_LED_BOOT_DELAY_MS));
     return 0;
 }
 

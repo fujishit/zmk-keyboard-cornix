@@ -151,18 +151,6 @@ config CORNIX_CRYPTO_SELFTEST_DELAY_MS
 	  after CONFIG_LOG_PROCESS_THREAD_STARTUP_DELAY_MS.  0 runs the test
 	  immediately.
 
-config CORNIX_CRYPTO_SELFTEST_STACK_SIZE
-	int "Stack size of the self-test thread"
-	depends on CORNIX_CRYPTO_SELFTEST
-	default 4096
-	help
-	  P-256 scalar multiplication is run on a dedicated thread rather than on
-	  the system work queue for the same reason the Bluetooth host runs it on
-	  its own long work queue (CONFIG_BT_LONG_WQ, 1400 bytes there): it needs
-	  far more stack than CONFIG_SYSTEM_WORKQUEUE_STACK_SIZE leaves free.  The
-	  default is generous because the generic mbedTLS ECP path needs much more
-	  than the p256-m driver.
-
 config CORNIX_REMOTE_BOOT
 	bool "Enter the bootloader from the host over the USB CDC-ACM console"
 	default n
@@ -190,8 +178,8 @@ config CORNIX_REMOTE_BOOT
 
 	    1200 - reboot *this* half into its UF2 bootloader, through the very
 	           same `bootload` behavior the `&bootloader` key runs;
-	    2400 - ask split peripheral CORNIX_REMOTE_BOOT_PERIPHERAL_INDEX (the
-	           right half) to do the same.  ZMK's split transport invokes a
+	    2400 - ask the split peripheral (the right half, index 0) to do the
+	           same.  ZMK's split transport invokes a
 	           behavior on a peripheral *by name*, and reset.dtsi is compiled
 	           into every ZMK build, so the peripheral needs no firmware change
 	           and no USB stack of its own;
@@ -216,15 +204,6 @@ config CORNIX_REMOTE_BOOT_DELAY_MS
 	  to finish closing the port - a device that vanishes mid-close leaves a
 	  stuck handle behind on Windows - and debounces hosts that send
 	  SetLineCoding twice.
-
-config CORNIX_REMOTE_BOOT_PERIPHERAL_INDEX
-	int "Split peripheral index the 2400 bps trigger targets"
-	depends on CORNIX_REMOTE_BOOT
-	default 0
-	help
-	  Cornix has exactly one peripheral (the right half), which is index 0.
-	  The index is the `source` a peripheral key event would carry, i.e. the
-	  slot in zmk/app/src/split/bluetooth/central.c's `peripherals[]`.
 
 config CORNIX_APP_SWITCH
 	bool "macOS-style application switcher behavior (zmk,behavior-cornix-app-switch)"

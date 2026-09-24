@@ -119,6 +119,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/init.h>
 #include <zephyr/sys/atomic.h>
+#include <zephyr/sys/util.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/logging/log.h>
@@ -140,16 +141,12 @@
  * the analyzers in scripts/log/ filter on is present. */
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
-/* The magic dwDTERate values.  Chosen from the low legacy rates no console
- * uses, with 1200 keeping the meaning it has everywhere else. */
-#define RATE_LOCAL_BOOTLOADER 1200U
-#define RATE_PERIPHERAL_BOOTLOADER 2400U
-#define RATE_RESET 4800U
-
-#define ACTION_NONE 0
-#define ACTION_LOCAL_BOOTLOADER 1
-#define ACTION_PERIPHERAL_BOOTLOADER 2
-#define ACTION_RESET 3
+/* The split peripheral the 2400 bps trigger targets.  Cornix has exactly one
+ * peripheral (the right half), which is index 0 - the `source` a peripheral key
+ * event would carry, i.e. the slot in zmk/app/src/split/bluetooth/central.c's
+ * `peripherals[]`.  Not a Kconfig symbol: there is no second peripheral to
+ * point it at. */
+#define PERIPHERAL_INDEX 0
 
 /* reset.dtsi always defines it; assert rather than silently degrade. */
 #if !DT_NODE_EXISTS(DT_NODELABEL(bootloader))
@@ -158,6 +155,19 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 /* "bootload" - the DT node name, which is what the peripheral looks up. */
 #define BOOTLOADER_BEHAVIOR_NAME DEVICE_DT_NAME(DT_NODELABEL(bootloader))
+
+/* The same binding on both paths: locally it is invoked through
+ * zmk_behavior_invoke_binding(), remotely only its *name* travels.  Not const,
+ * because zmk_split_central_invoke_behavior() takes a non-const pointer
+ * (zmk/app/include/zmk/split/central.h:35); neither callee modifies it. */
+static struct zmk_behavior_binding bootloader_binding = {
+    .behavior_dev = BOOTLOADER_BEHAVIOR_NAME,
+    .param1 = 0,
+    .param2 = 0,
+};
+
+/* ACTION_NONE has to be a value no table index can take. */
+#define ACTION_NONE (-1)
 
 static struct k_work_delayable action_work;
 static atomic_t pending_action = ATOMIC_INIT(ACTION_NONE);
@@ -177,67 +187,56 @@ static struct zmk_behavior_binding_event make_event(uint8_t source) {
 }
 
 static void enter_local_bootloader(void) {
-    struct zmk_behavior_binding binding = {
-        .behavior_dev = BOOTLOADER_BEHAVIOR_NAME,
-        .param1 = 0,
-        .param2 = 0,
-    };
-
     /* Source LOCAL keeps zmk_behavior_invoke_binding() on this half even though
-     * behavior_reset's locality is EVENT_SOURCE (behavior.c:96-103). */
+     * behavior_reset's locality is EVENT_SOURCE (behavior.c:96-103).  The
+     * binding cannot fail to resolve: reset.dtsi is compiled into every build
+     * and the #error above checks for it. */
     struct zmk_behavior_binding_event event = make_event(ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL);
 
-    if (!zmk_behavior_get_binding(BOOTLOADER_BEHAVIOR_NAME)) {
-        /* Should be unreachable - see the #error above - but never leave the
-         * keyboard running with the user believing it is being flashed. */
-        LOG_ERR("remote boot: no `%s` behavior, falling back to sys_reboot(RST_UF2)",
-                BOOTLOADER_BEHAVIOR_NAME);
-        sys_reboot(0x57 /* RST_UF2 */);
-        return;
-    }
-
-    zmk_behavior_invoke_binding(&binding, event, true);
+    zmk_behavior_invoke_binding(&bootloader_binding, event, true);
     /* Not reached: the behavior reboots. */
     LOG_ERR("remote boot: the bootloader behavior returned");
 }
 
 static void enter_peripheral_bootloader(void) {
 #if IS_ENABLED(CONFIG_ZMK_SPLIT) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
-    struct zmk_behavior_binding binding = {
-        .behavior_dev = BOOTLOADER_BEHAVIOR_NAME,
-        .param1 = 0,
-        .param2 = 0,
-    };
-    struct zmk_behavior_binding_event event =
-        make_event(CONFIG_CORNIX_REMOTE_BOOT_PERIPHERAL_INDEX);
+    struct zmk_behavior_binding_event event = make_event(PERIPHERAL_INDEX);
 
-    int err = zmk_split_central_invoke_behavior(CONFIG_CORNIX_REMOTE_BOOT_PERIPHERAL_INDEX,
-                                                &binding, event, true);
+    int err = zmk_split_central_invoke_behavior(PERIPHERAL_INDEX, &bootloader_binding, event, true);
     if (err) {
         LOG_WRN("remote boot: peripheral %d did not accept `%s` (err %d); is the other half "
                 "connected?",
-                CONFIG_CORNIX_REMOTE_BOOT_PERIPHERAL_INDEX, BOOTLOADER_BEHAVIOR_NAME, err);
+                PERIPHERAL_INDEX, BOOTLOADER_BEHAVIOR_NAME, err);
     }
 #else
     LOG_WRN("remote boot: this build is not a split central, ignoring the peripheral request");
 #endif
 }
 
+static void cold_reset(void) { sys_reboot(SYS_REBOOT_COLD); }
+
+/* The magic dwDTERate values, each with what it does and the words the log
+ * line uses.  Chosen from the low legacy rates no console uses, with 1200
+ * keeping the meaning it has everywhere else; the index into this table is
+ * what `pending_action` carries from the USB callback to the work item, so the
+ * rate, the action and the log string are stated exactly once. */
+static const struct {
+    uint32_t rate;
+    const char *what;
+    void (*run)(void);
+} actions[] = {
+    {1200U, "entering UF2 bootloader", enter_local_bootloader},
+    {2400U, "peripheral " STRINGIFY(PERIPHERAL_INDEX) " bootloader", enter_peripheral_bootloader},
+    {4800U, "reset", cold_reset},
+};
+
 static void action_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
 
-    switch (atomic_set(&pending_action, ACTION_NONE)) {
-    case ACTION_LOCAL_BOOTLOADER:
-        enter_local_bootloader();
-        break;
-    case ACTION_PERIPHERAL_BOOTLOADER:
-        enter_peripheral_bootloader();
-        break;
-    case ACTION_RESET:
-        sys_reboot(SYS_REBOOT_COLD);
-        break;
-    default:
-        break;
+    atomic_val_t action = atomic_set(&pending_action, ACTION_NONE);
+
+    if (action >= 0 && action < (atomic_val_t)ARRAY_SIZE(actions)) {
+        actions[action].run();
     }
 }
 
@@ -247,29 +246,17 @@ static void action_work_handler(struct k_work *work) {
 static void dte_rate_changed(const struct device *dev, uint32_t rate) {
     ARG_UNUSED(dev);
 
-    int action = ACTION_NONE;
-
-    switch (rate) {
-    case RATE_LOCAL_BOOTLOADER:
-        LOG_INF("remote boot: 1200 bps -> entering UF2 bootloader");
-        action = ACTION_LOCAL_BOOTLOADER;
-        break;
-    case RATE_PERIPHERAL_BOOTLOADER:
-        LOG_INF("remote boot: 2400 bps -> peripheral %d bootloader",
-                CONFIG_CORNIX_REMOTE_BOOT_PERIPHERAL_INDEX);
-        action = ACTION_PERIPHERAL_BOOTLOADER;
-        break;
-    case RATE_RESET:
-        LOG_INF("remote boot: 4800 bps -> reset");
-        action = ACTION_RESET;
-        break;
-    default:
-        LOG_DBG("remote boot: ignoring DTE rate %u", rate);
+    for (size_t i = 0; i < ARRAY_SIZE(actions); i++) {
+        if (rate != actions[i].rate) {
+            continue;
+        }
+        LOG_INF("remote boot: %u bps -> %s", rate, actions[i].what);
+        atomic_set(&pending_action, (atomic_val_t)i);
+        k_work_reschedule(&action_work, K_MSEC(CONFIG_CORNIX_REMOTE_BOOT_DELAY_MS));
         return;
     }
 
-    atomic_set(&pending_action, action);
-    k_work_reschedule(&action_work, K_MSEC(CONFIG_CORNIX_REMOTE_BOOT_DELAY_MS));
+    LOG_DBG("remote boot: ignoring DTE rate %u", rate);
 }
 
 static int remote_boot_init(void) {

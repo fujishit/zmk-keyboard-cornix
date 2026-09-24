@@ -106,17 +106,6 @@
  * one comparison and touches neither the radio nor the log.  It stops once USB
  * is unplugged, which is the only state where the battery would pay for it.
  *
- * The five cases this has to survive, for reference:
- *   (a) boot, preferred USB      -> gate closes as soon as USB is ready (1);
- *   (b) boot, stale preferred BLE-> window (7 -> 2), nothing connects, the
- *                                   preference is rewritten to USB, gate closes (5);
- *   (c) `&out OUT_BLE` while gated -> window, advertising back (2); host
- *                                   connects -> stays open (3); or nothing
- *                                   connects -> revert + gate (5);
- *   (d) `&out OUT_USB` while the gate is open with USB selected -> no event,
- *                                   closed by the watchdog within DELAY_MS (5);
- *   (e) USB unplugged            -> gate opens, advertising resumes (6).
- *
  * How it interacts with ZMK's own advertising state machine
  * ---------------------------------------------------------
  * ble.c keeps a static `advertising_status` and reconciles it in
@@ -222,11 +211,10 @@ static bool grace_pending;
 static bool grace_active;
 static int64_t grace_deadline;
 
-/* Last preferred transport we saw, to detect "became BLE"; `preferred_seen`
- * keeps the very first observation (the one that reads the value restored
- * from settings) from being mistaken for "no change". */
+/* Last preferred transport we saw, to detect "became BLE".  Zero-initialised,
+ * i.e. ZMK_TRANSPORT_NONE, so the very first observation - the one that reads
+ * the value restored from settings - can never be mistaken for "no change". */
 static enum zmk_transport last_preferred;
-static bool preferred_seen;
 /* The init line is logged from the first work run, not from SYS_INIT, because
  * settings are not loaded yet at SYS_INIT time. */
 static bool init_logged;
@@ -249,13 +237,12 @@ static void gate_work_handler(struct k_work *work) {
 
     /* --- grace window bookkeeping ------------------------------------- */
 
-    if (preferred == ZMK_TRANSPORT_BLE && (!preferred_seen || last_preferred != ZMK_TRANSPORT_BLE)) {
+    if (preferred == ZMK_TRANSPORT_BLE && last_preferred != ZMK_TRANSPORT_BLE) {
         /* `&out OUT_BLE` / the output toggle, or the value restored from
          * settings on the first run: the user asked for BLE, so give a host a
          * chance to connect before deciding the preference is stale. */
         grace_pending = true;
     }
-    preferred_seen = true;
     last_preferred = preferred;
 
     if (preferred != ZMK_TRANSPORT_BLE || selected == ZMK_TRANSPORT_BLE) {

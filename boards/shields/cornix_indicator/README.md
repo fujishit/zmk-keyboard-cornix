@@ -46,7 +46,7 @@ Builds clean against ZMK `main` + Zephyr 4.1 for `cornix_left//zmk`,
 | --- | --- |
 | `cornix_indicator.overlay` | enables `spi3`, `ws2812@0` and `EXT_POWER`, adds the `status-ws2812` alias |
 | `cornix_indicator.conf` | settings shared by both halves |
-| `Kconfig.defconfig` | this shield's own `CONFIG_CORNIX_INDICATOR_*` symbols |
+| `Kconfig.defconfig` | this shield's own `CONFIG_CORNIX_INDICATOR_LEDS_ON_USB` symbol |
 | `CMakeLists.txt` | compiles `src/` into `app` when the shield is selected |
 | `src/leds_on_usb.c` | keeps the LEDs lit while the half is USB-powered |
 | `boards/cornix_left_nrf52840_zmk.conf` | left half (central) LED assignment |
@@ -185,13 +185,16 @@ then leaves `is_shared = false` and `share_end_time = 0`, so
 alone, which is why "advertising" keeps breathing and "lost" keeps blinking
 instead of freezing.
 
-The re-assert is delayed by `CONFIG_CORNIX_INDICATOR_LEDS_ON_USB_DELAY_MS`
-(250 ms) so that it lands after the widget's own 16 ms-debounced render - and,
-on an activity change, after the widget has blanked every LED and cut the rail,
-which is what brings them back on idle. The first one after boot waits
-`CONFIG_CORNIX_INDICATOR_LEDS_ON_USB_BOOT_DELAY_MS` (4 s), because the widget's
-init thread spends `BATTERY_BLINK_MS + INTERVAL_MS` on the battery before it
-shows connectivity.
+The re-assert is delayed by `CORNIX_LED_PIN_DELAY_MS` (250 ms, a `#define` in
+`src/leds_on_usb.c`) so that it lands after the widget's own 16 ms-debounced
+render - and, on an activity change, after the widget has blanked every LED and
+cut the rail, which is what brings them back on idle. The first one after boot
+waits `CORNIX_LED_BOOT_DELAY_MS` (4 s), because the widget's init thread spends
+`BATTERY_BLINK_MS + INTERVAL_MS` on the battery before it shows connectivity.
+
+Going back to battery power hands the LEDs to the widget again (one
+`indicate_connectivity()` call), and only on that transition: while the half
+runs on battery none of these events touch the LEDs at all.
 
 The battery LED is only pinned at or above 99 %, plus once after an idle blank:
 below "full" the widget already holds it with a persistent green pulse of its

@@ -49,6 +49,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/byteorder.h>
+#include <zephyr/sys/util.h>
 #include <zephyr/types.h>
 
 #include "cmdline.h" /* native_add_command_line_opts() -> bs_add_extra_dynargs() */
@@ -144,9 +145,7 @@ static void discover_next_ccc(void);
 
 static uint8_t notify_func(struct bt_conn *conn, struct bt_gatt_subscribe_params *params,
 			   const void *data, uint16_t length) {
-	const uint8_t *bytes = data;
-	char hex[3 * 20 + 1];
-	size_t off = 0;
+	char hex[2 * 20 + 1];
 
 	if (!data) {
 		LOG_INF("[HOST UNSUBSCRIBED] handle %u", params->value_handle);
@@ -154,10 +153,9 @@ static uint8_t notify_func(struct bt_conn *conn, struct bt_gatt_subscribe_params
 		return BT_GATT_ITER_STOP;
 	}
 
-	for (uint16_t i = 0; i < length && off + 3 < sizeof(hex); i++) {
-		off += snprintk(&hex[off], sizeof(hex) - off, "%02x", bytes[i]);
-	}
-	hex[off] = '\0';
+	/* A HID input report is a handful of bytes; clamp rather than let
+	 * bin2hex() refuse a buffer that is too small and leave `hex` unset. */
+	bin2hex(data, MIN(length, (sizeof(hex) - 1) / 2), hex, sizeof(hex));
 
 	notification_count++;
 	/* measure.py keys on this exact prefix. */
@@ -297,7 +295,6 @@ static void start_discovery(struct bt_conn *conn) {
 /* --- scanning --------------------------------------------------------- */
 
 struct ad_scan_result {
-	const bt_addr_le_t *addr;
 	bool has_hid;
 	bool name_matches;
 	char name[NAME_FILTER_LEN];
@@ -338,7 +335,7 @@ static bool ad_parse(struct bt_data *data, void *user_data) {
 
 static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
 			 struct net_buf_simple *ad) {
-	struct ad_scan_result res = {.addr = addr};
+	struct ad_scan_result res = {0};
 	struct bt_le_conn_param param;
 	char dev[BT_ADDR_LE_STR_LEN];
 	int err;

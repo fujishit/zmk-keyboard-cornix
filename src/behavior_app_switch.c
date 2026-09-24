@@ -124,8 +124,9 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
 
 struct behavior_app_switch_config {
-    /* Encoded ZMK keycodes, as `&kp <x>` would take them. */
-    uint32_t hold_mod;
+    /* Encoded ZMK keycodes, as `&kp <x>` would take them.  `hold-mod` itself is
+     * only ever needed as a HID modifier bit, so it is kept as `hold_mod_flag`
+     * below rather than as a keycode. */
     uint32_t switch_mod;
     uint32_t tap;
     /* The HID modifier bit of `hold_mod`, for zmk_hid_masked_modifiers_set(). */
@@ -140,16 +141,13 @@ struct behavior_app_switch_data {
     bool tap_held;
 };
 
-/* Both are "press the key ZMK's `&kp` would press": the same helper
- * behavior_key_press.c:43 uses, so a modifier keycode ends up in
- * `explicit_modifiers` and a normal key as an ordinary usage. */
-static void app_switch_raise(uint32_t keycode, bool pressed, int64_t timestamp) {
-    raise_zmk_keycode_state_changed_from_encoded(keycode, pressed, timestamp);
-}
-
+/* raise_zmk_keycode_state_changed_from_encoded() is "press the key ZMK's `&kp`
+ * would press": the same helper behavior_key_press.c:43 uses, so a modifier
+ * keycode ends up in `explicit_modifiers` and a normal key as an ordinary
+ * usage. */
 static void app_switch_tap(const struct behavior_app_switch_config *cfg, int64_t timestamp) {
-    app_switch_raise(cfg->tap, true, timestamp);
-    app_switch_raise(cfg->tap, false, timestamp);
+    raise_zmk_keycode_state_changed_from_encoded(cfg->tap, true, timestamp);
+    raise_zmk_keycode_state_changed_from_encoded(cfg->tap, false, timestamp);
 }
 
 static void app_switch_begin(const struct device *dev, int64_t timestamp) {
@@ -159,7 +157,7 @@ static void app_switch_begin(const struct device *dev, int64_t timestamp) {
     /* Order matters: mask first, so the very first report that carries the
      * switch modifier does not also carry the held hold-mod. */
     zmk_hid_masked_modifiers_set(cfg->hold_mod_flag);
-    app_switch_raise(cfg->switch_mod, true, timestamp);
+    raise_zmk_keycode_state_changed_from_encoded(cfg->switch_mod, true, timestamp);
     data->switching = true;
 
     LOG_DBG("app switch: entered, masking mods 0x%02X, holding 0x%02X", cfg->hold_mod_flag,
@@ -174,7 +172,7 @@ static void app_switch_end(const struct device *dev, int64_t timestamp) {
     /* The hold-mod is NOT pressed again: the user has let go of it, and the
      * `&kp` on `mod-position` has already sent (or is about to send) its own
      * release. */
-    app_switch_raise(cfg->switch_mod, false, timestamp);
+    raise_zmk_keycode_state_changed_from_encoded(cfg->switch_mod, false, timestamp);
     zmk_hid_masked_modifiers_clear();
 
     LOG_DBG("app switch: left, released 0x%02X", (uint32_t)ZMK_HID_USAGE_ID(cfg->switch_mod));
@@ -189,8 +187,12 @@ static int on_app_switch_binding_pressed(struct zmk_behavior_binding *binding,
     const struct behavior_app_switch_config *cfg = dev->config;
     struct behavior_app_switch_data *data = dev->data;
 
+    /* Read once: the only thing this handler raises before the second test is
+     * the *switch* modifier's release, which cannot touch the hold-mod bit. */
+    const bool hold_mod_down = (zmk_hid_get_explicit_mods() & cfg->hold_mod_flag) != 0;
+
     if (data->switching) {
-        if (zmk_hid_get_explicit_mods() & cfg->hold_mod_flag) {
+        if (hold_mod_down) {
             /* Still holding 41: one more step through the switcher. */
             app_switch_tap(cfg, event.timestamp);
             return ZMK_BEHAVIOR_OPAQUE;
@@ -201,7 +203,7 @@ static int on_app_switch_binding_pressed(struct zmk_behavior_binding *binding,
         app_switch_end(dev, event.timestamp);
     }
 
-    if (zmk_hid_get_explicit_mods() & cfg->hold_mod_flag) {
+    if (hold_mod_down) {
         app_switch_begin(dev, event.timestamp);
         app_switch_tap(cfg, event.timestamp);
         return ZMK_BEHAVIOR_OPAQUE;
@@ -210,7 +212,7 @@ static int on_app_switch_binding_pressed(struct zmk_behavior_binding *binding,
     /* No hold-mod: a plain `&kp <tap>`, release mirrored on the key release so
      * that holding it still auto-repeats. */
     data->tap_held = true;
-    app_switch_raise(cfg->tap, true, event.timestamp);
+    raise_zmk_keycode_state_changed_from_encoded(cfg->tap, true, event.timestamp);
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
@@ -225,7 +227,7 @@ static int on_app_switch_binding_released(struct zmk_behavior_binding *binding,
 
     if (data->tap_held) {
         data->tap_held = false;
-        app_switch_raise(cfg->tap, false, event.timestamp);
+        raise_zmk_keycode_state_changed_from_encoded(cfg->tap, false, event.timestamp);
     }
     /* In the switch state the tap was already completed on the press: the
      * switcher is driven by taps, and the switch modifier is let go of by the
@@ -287,7 +289,6 @@ ZMK_SUBSCRIPTION(cornix_app_switch, zmk_position_state_changed);
     APP_SWITCH_ASSERT_IS_MOD(n, hold_mod);                                                         \
     APP_SWITCH_ASSERT_IS_MOD(n, switch_mod);                                                       \
     static const struct behavior_app_switch_config behavior_app_switch_config_##n = {              \
-        .hold_mod = DT_INST_PROP(n, hold_mod),                                                     \
         .switch_mod = DT_INST_PROP(n, switch_mod),                                                 \
         .tap = DT_INST_PROP(n, tap),                                                               \
         .hold_mod_flag = APP_SWITCH_MOD_FLAG(DT_INST_PROP(n, hold_mod)),                           \

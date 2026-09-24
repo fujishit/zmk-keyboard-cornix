@@ -330,9 +330,11 @@ static void check_ecdh(const char *name, const uint8_t priv[P256_SCALAR_LEN],
 		return;
 	}
 	if (memcmp(dhkey, rfc5903_girx, P256_COORD_LEN) != 0) {
+		char want[24];
+
 		report(name, false, "got %s.. want %s..",
 		       head8(dhkey, sizeof(dhkey), hex, sizeof(hex)),
-		       "d6840f6b42f6edaf");
+		       head8(rfc5903_girx, sizeof(rfc5903_girx), want, sizeof(want)));
 		return;
 	}
 
@@ -534,7 +536,17 @@ static void run_selftest(void)
 	}
 }
 
-static K_THREAD_STACK_DEFINE(selftest_stack, CONFIG_CORNIX_CRYPTO_SELFTEST_STACK_SIZE);
+/* P-256 scalar multiplication runs on a dedicated thread rather than on the
+ * system work queue for the same reason the Bluetooth host uses its own long
+ * work queue (CONFIG_BT_LONG_WQ, 1400 bytes there): it needs far more stack
+ * than CONFIG_SYSTEM_WORKQUEUE_STACK_SIZE leaves free.  Generous because the
+ * generic mbedTLS ECP path needs much more than the p256-m driver.  Not a
+ * Kconfig symbol: no build has ever needed a different value, and this is a
+ * debug-only self-test.
+ */
+#define SELFTEST_STACK_SIZE 4096
+
+static K_THREAD_STACK_DEFINE(selftest_stack, SELFTEST_STACK_SIZE);
 static struct k_thread selftest_thread;
 
 static void selftest_entry(void *a, void *b, void *c)

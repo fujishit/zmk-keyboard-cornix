@@ -145,9 +145,13 @@ bytes while the port is being reconfigured is still confusing.
 ### Caveats
 
 * **It is a debugging aid, not a feature.** Anything that can open the console
-  port can put the keyboard into its bootloader. Keep
-  `CONFIG_CORNIX_REMOTE_BOOT` on debug images only; the daily-driver build has
-  no console port at all.
+  port can put the keyboard into its bootloader. It is on for every
+  `build-debug.yaml` artifact, because the `cornix-debug-log` snippet enables
+  `CONFIG_CORNIX_REMOTE_BOOT` itself (use the `cornix-remote-boot` snippet on
+  its own for an image that should be flashable remotely but not chatty).
+  The daily-driver `build.yaml` images have no console port at all, and the
+  symbol depends on `USB_CDC_ACM`, so it cannot be enabled there by accident —
+  keep it that way.
 * **The peripheral must be connected.** `--enter right` only tells the *left*
   half to send a command. If no split transport is up at all the left half
   logs `remote boot: peripheral 0 did not accept ...`; if the transport is up
