@@ -19,10 +19,12 @@
  * What this does
  * --------------
  * While the USB endpoint is the one actually carrying keystrokes - the
- * *selected* transport is USB - disconnect the active BLE profile and keep
- * advertising stopped, so no host can connect or retry.  As soon as USB stops
- * being the selected transport (the cable is unplugged, or a BLE host connects
- * and becomes the selected endpoint), hand advertising back to ZMK.
+ * *selected* transport is USB - keep advertising stopped, so no host can
+ * connect or retry.  A host that is already connected is left connected (see
+ * the note in gate_work_handler(): dropping a bonded host only makes it
+ * reconnect at once).  As soon as USB stops being the selected transport (the
+ * cable is unplugged, or a BLE host connects and becomes the selected
+ * endpoint), hand advertising back to ZMK.
  *
  * The one exception is the *BLE grace window*, and it is what keeps
  * `&out OUT_BLE` usable at all.  ZMK's endpoint selection falls back from a
@@ -156,12 +158,10 @@
  * starts advertising.  If even the second one fails we keep the paused state
  * and retry from the work item instead of leaving BLE off for good.
  *
- * The split link is never touched.  zmk_ble_prof_disconnect() looks up only
- * the conn of that host profile's address and disconnects it (ble.c:318-336),
- * peripheral addresses live in a separate table (ble.c:82), and
- * bt_le_adv_stop() only affects this device's own peripheral-role
- * advertising - the central reaches the right half by scanning and connecting
- * as a central (split/bluetooth/central.c), which needs no advertising.
+ * The split link is never touched: bt_le_adv_stop() only affects this
+ * device's own peripheral-role advertising - the central reaches the right
+ * half by scanning and connecting as a central (split/bluetooth/central.c),
+ * which needs no advertising.
  */
 
 #include <zephyr/kernel.h>
@@ -301,15 +301,17 @@ static void gate_work_handler(struct k_work *work) {
         bool apply = enforce_pending || !paused;
         enforce_pending = false;
 
-        if (zmk_ble_active_profile_is_connected()) {
-            int index = zmk_ble_active_profile_index();
-            int err = zmk_ble_prof_disconnect((uint8_t)index);
-            LOG_INF("ble gate: disconnecting host profile %d (err %d)", index, err);
-            /* disconnected() submits update_advertising_work (ble.c:548), so
-             * advertising comes back right after; stop it on the next tick. */
-            apply = true;
-            enforce_pending = true;
-        }
+        /* A host that is already connected is left alone.  The gate used to
+         * disconnect it here, and hardware on 2026-09-24 12:00 showed why
+         * that is wrong: a healthy, bonded Mac reconnects within 150 ms of
+         * being dropped, so "disconnect while gated" produced exactly the
+         * reconnect storm the gate exists to prevent (24 cycles/min, right-half
+         * latency through the roof) whenever the user switched the output to
+         * USB while the Mac was connected.  An idle encrypted link costs one
+         * connection event per interval and no keystrokes go to it while USB
+         * is the selected transport; what must not happen is a *new* host
+         * (or a host with a stale bond) connecting, and that is what stopping
+         * advertising covers. */
 
         if (apply) {
             int err = bt_le_adv_stop();
