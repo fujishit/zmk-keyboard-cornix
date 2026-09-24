@@ -16,8 +16,9 @@
 #     --verbose      print the filtered key events of every case
 #     --auto-accept  overwrite keycode_events.snapshot with the actual output
 #     --no-build     skip `west build`, re-run the existing executables
-#     --keep-going   run all cases even if one fails to build (default)
 #     -h, --help     this text
+#
+# Every case is run even when an earlier one fails to build.
 #
 # Environment overrides (all optional):
 #   SIM_WS          west workspace to use   (default: <repo>/.sim/ws)
@@ -31,9 +32,6 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SIM_WS="${SIM_WS:-$REPO_ROOT/.sim/ws}"
-ZMK_APP_DIR="${ZMK_APP_DIR:-$SIM_WS/zmk/app}"
-SIM_VENV="${SIM_VENV:-$REPO_ROOT/.sim/venv}"
 SIM_BUILD_DIR="${SIM_BUILD_DIR:-$REPO_ROOT/.build/sim}"
 TESTS_ROOT="$REPO_ROOT/tests/sim"
 BOARD="native_sim//zmk_test_mock"
@@ -50,7 +48,6 @@ while [[ $# -gt 0 ]]; do
         --verbose) verbose=1 ;;
         --auto-accept) auto_accept=1 ;;
         --no-build) no_build=1 ;;
-        --keep-going) ;;
         -h|--help) usage; exit 0 ;;
         --) shift; paths+=("$@"); break ;;
         -*) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -61,31 +58,9 @@ done
 [[ ${#paths[@]} -eq 0 ]] && paths=("$TESTS_ROOT")
 
 # --- environment ----------------------------------------------------------
-if [[ -f "$SIM_VENV/bin/activate" ]]; then
-    # shellcheck disable=SC1091
-    source "$SIM_VENV/bin/activate"
-fi
-# Tools built by bootstrap.sh (e.g. GNU make when the host lacks it).
-if [[ -d "$REPO_ROOT/.sim/tools/bin" ]]; then
-    export PATH="$REPO_ROOT/.sim/tools/bin:$PATH"
-fi
-if ! command -v west >/dev/null 2>&1; then
-    echo "error: west not found. Run scripts/sim/bootstrap.sh first or set SIM_VENV." >&2
-    exit 2
-fi
-if [[ ! -f "$ZMK_APP_DIR/CMakeLists.txt" ]]; then
-    echo "error: ZMK app not found at $ZMK_APP_DIR (set ZMK_APP_DIR or SIM_WS, or run bootstrap.sh)." >&2
-    exit 2
-fi
-# native_sim only needs the host gcc; do not require a Zephyr SDK.
-export ZEPHYR_TOOLCHAIN_VARIANT="${ZEPHYR_TOOLCHAIN_VARIANT:-host}"
-# west finds its workspace by walking up from the cwd, so builds run from
-# inside $SIM_WS (all other paths passed to it are absolute).
-if [[ ! -d "$SIM_WS/.west" ]]; then
-    echo "error: $SIM_WS is not a west workspace (no .west/); run bootstrap.sh or set SIM_WS." >&2
-    exit 2
-fi
-unset ZEPHYR_BASE # let west/cmake resolve it from the workspace
+# venv, PATH, toolchain and the workspace checks; also sets SIM_WS/ZMK_APP_DIR.
+# shellcheck source=scripts/sim/env.sh
+source "$REPO_ROOT/scripts/sim/env.sh"
 
 # --- collect cases ----------------------------------------------------------
 cases=()

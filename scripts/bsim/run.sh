@@ -68,9 +68,6 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SIM_WS="${SIM_WS:-$REPO_ROOT/.sim/ws}"
-ZMK_APP_DIR="${ZMK_APP_DIR:-$SIM_WS/zmk/app}"
-SIM_VENV="${SIM_VENV:-$REPO_ROOT/.sim/venv}"
 BSIM_OUT_PATH="${BSIM_OUT_PATH:-$REPO_ROOT/.sim/bsim}"
 BSIM_BUILD_DIR="${BSIM_BUILD_DIR:-$REPO_ROOT/.build/bsim}"
 CASE_DIR="$REPO_ROOT/tests/bsim/split-latency"
@@ -121,27 +118,22 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --- environment ----------------------------------------------------------
-if [[ -f "$SIM_VENV/bin/activate" ]]; then
-    # shellcheck disable=SC1091
-    source "$SIM_VENV/bin/activate"
-fi
+# venv, PATH, toolchain, west/workspace checks and die(); also sets SIM_WS and
+# ZMK_APP_DIR.
+# shellcheck source=scripts/sim/env.sh
+source "$REPO_ROOT/scripts/sim/env.sh"
+
 # .sim/tools/bsim-bin must come first: it holds the `gcc -m32` wrapper the
 # 32-bit-only nrf52_bsim board needs (see scripts/bsim/bootstrap.sh).
-export PATH="$REPO_ROOT/.sim/tools/bsim-bin:$REPO_ROOT/.sim/tools/bin:$PATH"
+export PATH="$REPO_ROOT/.sim/tools/bsim-bin:$PATH"
 export BSIM_OUT_PATH
 export BSIM_COMPONENTS_PATH="${BSIM_COMPONENTS_PATH:-$BSIM_OUT_PATH/components}"
-export ZEPHYR_TOOLCHAIN_VARIANT="${ZEPHYR_TOOLCHAIN_VARIANT:-host}"
 # glibc dlopen()s libgcc_s.so.1 for pthread_exit(); the 32-bit copy is not in
 # any system path, and a DT_RUNPATH on the executable does not cover dlopen.
 export LD_LIBRARY_PATH="$MULTILIB_DIR/usr/lib32${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-unset ZEPHYR_BASE
 
-die() { echo "error: $*" >&2; exit 2; }
 [[ -x "$BSIM_OUT_PATH/bin/bs_2G4_phy_v1" ]] || die "BabbleSim not built at $BSIM_OUT_PATH (run scripts/bsim/bootstrap.sh)"
 [[ -d "$BSIM_OUT_PATH/nrf_hw_models" ]] || die "nrf_hw_models missing at $BSIM_OUT_PATH/nrf_hw_models (run scripts/bsim/bootstrap.sh)"
-[[ -f "$ZMK_APP_DIR/CMakeLists.txt" ]] || die "ZMK app not found at $ZMK_APP_DIR (run scripts/sim/bootstrap.sh)"
-[[ -d "$SIM_WS/.west" ]] || die "$SIM_WS is not a west workspace"
-command -v west >/dev/null 2>&1 || die "west not found (run scripts/sim/bootstrap.sh or set SIM_VENV)"
 
 IFS=',' read -r -a lat_list <<< "$latencies"
 # --scenario NAME selects tests/bsim/split-latency/peripheral-NAME (its own
@@ -155,25 +147,29 @@ LOG_DIR="${log_dir:-$BSIM_BUILD_DIR/logs$periph_suffix}"
 mkdir -p "$LOG_DIR"
 HOST_EXE="$BSIM_BUILD_DIR/host/zephyr/zephyr.exe"
 
-build() { # <build-dir> <zmk-config-dir> [extra cmake args...]
-    local dir="$1" cfg="$2"; shift 2
+build() { # <build-dir> <source-dir> [extra cmake args...]
+    local dir="$1" src="$2"; shift 2
     # Not inside $dir: `west build -p` wipes it, log file included.
     local log="$BSIM_BUILD_DIR/$(basename "$dir")-build.log"
     mkdir -p "$BSIM_BUILD_DIR"
     echo "  building $(basename "$dir") ..."
-    if ! (cd "$SIM_WS" && west build -s "$ZMK_APP_DIR" -d "$dir" -b "$BOARD" -p -- \
-            "-DZMK_CONFIG=$cfg" "-DZMK_EXTRA_MODULES=$REPO_ROOT;$BSIM_OUT_PATH/nrf_hw_models" \
-            "$@") > "$log" 2>&1; then
+    if ! (cd "$SIM_WS" && west build -s "$src" -d "$dir" -b "$BOARD" -p -- "$@") > "$log" 2>&1; then
         tail -n 30 "$log"
         die "build failed for $dir (see $log)"
     fi
 }
 
+build_zmk() { # <build-dir> <zmk-config-dir> [extra cmake args...]
+    local dir="$1" cfg="$2"; shift 2
+    # _common/bsim.conf holds everything the three cases agree on (roles,
+    # the peripherals the simulated nRF52833 has no model for, logging); the
+    # case directory only carries what makes it that case.
+    build "$dir" "$ZMK_APP_DIR" \
+        "-DZMK_CONFIG=$cfg" "-DZMK_EXTRA_MODULES=$REPO_ROOT;$BSIM_OUT_PATH/nrf_hw_models" \
+        "-DEXTRA_CONF_FILE=$CASE_DIR/_common/bsim.conf" "$@"
+}
+
 build_host() { # the plain-Zephyr simulated computer
-    local dir="$BSIM_BUILD_DIR/host"
-    local log="$BSIM_BUILD_DIR/host-build.log"
-    mkdir -p "$BSIM_BUILD_DIR"
-    echo "  building host ..."
     # tests/bsim/host is not a ZMK application, so the ZMK modules of this
     # west workspace must be kept out of the build: several of them (e.g.
     # zmk-dongle-display) have Kconfig.defconfig files that only parse when
@@ -185,11 +181,7 @@ build_host() { # the plain-Zephyr simulated computer
             | grep -v '^zmk' | grep -v '^manifest|' | grep -v '^zephyr|' \
             | cut -d'|' -f2 | paste -sd';')
     mods="$mods;$BSIM_OUT_PATH/nrf_hw_models"
-    if ! (cd "$SIM_WS" && west build -s "$HOST_DIR" -d "$dir" -b "$BOARD" -p -- \
-            "-DZEPHYR_MODULES=$mods") > "$log" 2>&1; then
-        tail -n 30 "$log"
-        die "build failed for $dir (see $log)"
-    fi
+    build "$BSIM_BUILD_DIR/host" "$HOST_DIR" "-DZEPHYR_MODULES=$mods"
 }
 
 # Build directory suffix so that a --central-pref-latency sweep does not keep
@@ -202,9 +194,9 @@ if [[ -n "$central_pref_latency" ]]; then
 fi
 
 if [[ $no_build -eq 0 ]]; then
-    build "$BSIM_BUILD_DIR/peripheral$periph_suffix" "$CASE_DIR/peripheral$periph_suffix"
+    build_zmk "$BSIM_BUILD_DIR/peripheral$periph_suffix" "$CASE_DIR/peripheral$periph_suffix"
     for lat in "${lat_list[@]}"; do
-        build "$BSIM_BUILD_DIR/central-$lat$central_suffix" "$CASE_DIR/central" \
+        build_zmk "$BSIM_BUILD_DIR/central-$lat$central_suffix" "$CASE_DIR/central" \
             "-DCONFIG_ZMK_SPLIT_BLE_PREF_LATENCY=$lat" "${central_extra[@]}"
     done
     [[ $with_host -eq 1 ]] && build_host

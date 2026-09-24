@@ -53,11 +53,14 @@ tests/bsim/
   split-latency/
     _common/cornix_bsim.dtsi         mock kscan (4x14) + the board's layout_50 / default_transform
     _common/cornix_bsim_keymap.dtsi  the above + boards/jzf/cornix/cornix.keymap
+    _common/bsim.conf                what all three cases share (split + BLE, no USB/battery/
+                                     LEDs/display/sleep, immediate logging); run.sh passes it
+                                     to every ZMK image as -DEXTRA_CONF_FILE
     peripheral/nrf52_bsim.keymap     scripted key events (20 press/release pairs, irregular gaps)
-    peripheral/nrf52_bsim.conf       CONFIG_ZMK_SPLIT=y, ROLE_CENTRAL=n
+    peripheral/nrf52_bsim.conf       ROLE_CENTRAL=n
     peripheral-fast/                 the same, with the fast-typing burst script (run.sh --scenario fast)
     central/nrf52_bsim.keymap        same matrix and keymap, no local events
-    central/nrf52_bsim.conf          CONFIG_ZMK_SPLIT=y, ROLE_CENTRAL=y
+    central/nrf52_bsim.conf          ROLE_CENTRAL=y + the advertised keyboard name
   test_split_latency.py              unittest wrapper around scripts/bsim/run.sh
 scripts/bsim/
   bootstrap.sh                       fetches and builds BabbleSim (and the 32-bit bits it needs)
