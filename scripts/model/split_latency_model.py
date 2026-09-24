@@ -49,9 +49,12 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import random
-import statistics
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "log"))
+import analyze_latency as al  # noqa: E402
 
 CONN_INTERVAL_UNIT_MS = 1.25   # BLE connection interval unit
 SUPERVISION_UNIT_MS = 10.0     # BLE supervision timeout unit
@@ -132,56 +135,17 @@ def parse_int_list(text: str) -> list[int]:
 
 
 # --------------------------------------------------------------------------
-# summary helpers (kept identical in style to scripts/log/analyze_latency.py)
+# summary helpers
 # --------------------------------------------------------------------------
-def percentile(sorted_vals: list[float], p: float) -> float:
-    if not sorted_vals:
-        raise ValueError("empty")
-    idx = int(round(p / 100.0 * (len(sorted_vals) - 1)))
-    return sorted_vals[max(0, min(idx, len(sorted_vals) - 1))]
-
-
-def summarize(samples: list[dict]) -> dict:
-    vals = sorted(s["ms"] for s in samples)
-    return {
-        "count": len(vals),
-        "min": vals[0],
-        "median": statistics.median(vals),
-        "p95": percentile(vals, 95),
-        "max": vals[-1],
-        "unit": "ms",
-    }
-
-
-def fmt_ms(x: float) -> str:
-    return "%.2f" % x
-
-
-TABLE_HEADER = "  %-58s %6s %8s %8s %8s %8s" % ("stage", "count", "min", "median", "p95", "max")
-
-
-def table_row(name: str, s: dict) -> str:
-    return "  %-58s %6d %8s %8s %8s %8s" % (name, s["count"], fmt_ms(s["min"]), fmt_ms(s["median"]),
-                                            fmt_ms(s["p95"]), fmt_ms(s["max"]))
-
-
-def histogram(vals: list[float], bins: int = 8, width: int = 30) -> list[str]:
-    if not vals:
-        return []
-    lo, hi = min(vals), max(vals)
-    if hi - lo < 1e-9:
-        return ["  %8.2f ms  %s %d" % (lo, "#" * min(width, len(vals)), len(vals))]
-    step = (hi - lo) / bins
-    counts = [0] * bins
-    for v in vals:
-        i = min(int((v - lo) / step), bins - 1)
-        counts[i] += 1
-    peak = max(counts)
-    rows = []
-    for i, c in enumerate(counts):
-        rows.append("  %8.2f-%-8.2f %s %d" % (lo + i * step, lo + (i + 1) * step,
-                                              "#" * int(round(width * c / peak)), c))
-    return rows
+# The model prints the same stage table as scripts/log/analyze_latency.py so
+# that a model run and an analyzer run can be read side by side; the summary,
+# the formatting and the histogram therefore come from the analyzer itself.
+percentile = al.percentile
+summarize = al.summarize
+fmt_ms = al.fmt_ms
+histogram = al.histogram
+TABLE_HEADER = al.TABLE_HEADER
+table_row = al.table_row
 
 
 # --------------------------------------------------------------------------
@@ -514,9 +478,7 @@ def compare_text(c: dict, show_hist: bool = False) -> list[str]:
 # CLI
 # --------------------------------------------------------------------------
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
-                                formatter_class=argparse.RawDescriptionHelpFormatter,
-                                epilog=__doc__.split("\n\n", 1)[1])
+    p = al.doc_parser(__doc__)
     p.add_argument("--interval-units", type=int, default=6,
                    help="connection interval in 1.25 ms units (CONFIG_ZMK_SPLIT_BLE_PREF_INT, default 6 = 7.5 ms)")
     p.add_argument("--latency", type=int, default=30,
@@ -583,14 +545,7 @@ def main(argv: list[str] | None = None) -> int:
             s.pop("samples", None)
         if "compare" in result:
             result["compare"].pop("measured_samples_ms", None)
-    if args.json == "-":
-        print(json.dumps(result, indent=2))
-    else:
-        print(text)
-        if args.json:
-            with open(args.json, "w", encoding="utf-8") as fh:
-                json.dump(result, fh, indent=2)
-            print("json written to %s" % args.json)
+    al.emit_json(args.json, result, text)
     return 0
 
 

@@ -37,15 +37,23 @@ from __future__ import annotations
 
 import argparse
 import bisect
+import heapq
 import json
+import os
 import re
 import statistics
 import sys
-from collections import defaultdict
+from collections import defaultdict, deque
 
-HOST = re.compile(r"^\[(?:host\s+)?(\d{1,2}):(\d{2}):(\d{2})[.,](\d{1,6})\]\s*")
-ZTS = re.compile(r"\[(\d+):(\d{2}):(\d{2})\.(\d{3}),(\d{3})\]")
-POS = re.compile(r"Row: (\d+), col: (\d+), position: (\d+), pressed: (true|false)")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import analyze_latency as al  # noqa: E402
+
+# The line shapes this tool shares with analyze_latency.py (same log lines, so
+# the pattern lives in one place).  TS_ONLY_RE carries a sixth group with the
+# rest of the line, which always matches, so it finds the same timestamps.
+HOST = al.HOST_RE
+ZTS = al.TS_ONLY_RE
+POS = al.EVENT_RE["position"]
 HEX = re.compile(r"^\s*((?:[0-9a-f]{2}\s+){15}[0-9a-f]{2})\s*\|")
 NOTIF = re.compile(r"\[NOTIFICATION\] data \S+ length 16")
 BOOT = re.compile(r"Booting Zephyr")
@@ -63,15 +71,14 @@ WIN_AFTER = 0.4
 
 
 def host_s(m):
-    h, mi, s, f = m.groups()
-    return int(h) * 3600 + int(mi) * 60 + int(s) + int(f.ljust(6, "0")[:6]) / 1e6
+    return al.host_seconds(*m.groups())
 
 
 def dev_s(line):
     m = ZTS.search(line)
     if not m:
         return None
-    h, mi, s, ms, us = (int(x) for x in m.groups())
+    h, mi, s, ms, us = (int(m.group(i)) for i in range(1, 6))
     return h * 3600 + mi * 60 + s + ms / 1e3 + us / 1e6
 
 
@@ -101,6 +108,26 @@ def _fix_host(items, lineno_index, marks, marks_lineno_index):
         it[0] = h
 
 
+def window_min_index(vals, bounds):
+    """[index of min(vals[lo:hi]) for lo, hi in bounds], in O(n) instead of
+    O(n x window) (monotonic deque).
+
+    `bounds` must slide: `lo` and `hi` non-decreasing and every window
+    non-empty.  Ties keep the leftmost index, which is the one min() picks.
+    """
+    out, dq, added = [], deque(), 0   # dq: indices, vals[dq] non-decreasing
+    for lo, hi in bounds:
+        while added < hi:
+            while dq and vals[dq[-1]] > vals[added]:
+                dq.pop()
+            dq.append(added)
+            added += 1
+        while dq[0] < lo:
+            dq.popleft()
+        out.append(dq[0])
+    return out
+
+
 def correct_host(items, seg_index, window_s=120.0):
     """Replace each host stamp by device time + the local minimum of
     (host - device) over +-window_s of device time, per boot segment.
@@ -117,10 +144,10 @@ def correct_host(items, seg_index, window_s=120.0):
         lst.sort(key=lambda it: it[1])
         devs = [it[1] for it in lst]
         offs = [it[0] - it[1] for it in lst]
-        for i, it in enumerate(lst):
-            lo = bisect.bisect_left(devs, devs[i] - window_s)
-            hi = bisect.bisect_right(devs, devs[i] + window_s)
-            it[0] = it[1] + min(offs[lo:hi])
+        bounds = [(bisect.bisect_left(devs, d - window_s), bisect.bisect_right(devs, d + window_s))
+                  for d in devs]
+        for it, i in zip(lst, window_min_index(offs, bounds)):
+            it[0] = it[1] + offs[i]
 
 
 def parse_periph(path):
@@ -147,7 +174,15 @@ def parse_periph(path):
     return ev, marks
 
 
-def parse_central(path):
+def parse_central(path, on_line=None):
+    """Notification bitmaps and link marks from the central's log.
+
+    `on_line(lineno, line, host_s, seg, notif)` is called for every line, in
+    file order, so that a caller needing other events from the same log does
+    not have to read it a second time (scripts/log/crosshalf.py).  `notif` is
+    (index into notifs, bitmap) on the line that completed a notification and
+    None everywhere else.
+    """
     notifs, marks = [], []  # [host, dev, bitmap, lineno, seg], [host, dev, kind, text, addr]
     pending = None
     peers = set()
@@ -157,63 +192,77 @@ def parse_central(path):
             m = HOST.match(line)
             h = host_s(m) if m else None
             rest = line[m.end():] if m else line
+            notif = None
+            hm = HEX.match(rest) if pending is not None else None
             if NOTIF.search(line):
                 pending = (h, dev_s(line), no)
-                continue
-            if pending is not None:
-                hm = HEX.match(rest)
-                if hm:
-                    bits = tuple(int(x, 16) for x in hm.group(1).split())
-                    notifs.append([pending[0], pending[1], bits, pending[2], seg])
-                    pending = None
-                    continue
-                if "split_central_notify_func: data" in line:
-                    continue
+            elif hm:
+                bits = tuple(int(x, 16) for x in hm.group(1).split())
+                notifs.append([pending[0], pending[1], bits, pending[2], seg])
                 pending = None
-            if DISC.search(line) and "split_central_disconnected" in line:
-                marks.append([h, dev_s(line), "disconnected", DISC.search(line).group(1), None, no])
-            elif BOOT.search(line):
-                seg += 1
-                marks.append([h, dev_s(line), "boot", "", None, no])
+                notif = (len(notifs) - 1, bits)
+            elif pending is not None and "split_central_notify_func: data" in line:
+                pass
             else:
-                dm = DEVICE.search(line)
-                if dm:
-                    marks.append([h, dev_s(line), "rssi", dm.group(2), dm.group(1), no])
-                    continue
-                pm = SPLIT_PEER.search(line)
-                if pm:
-                    peers.add(pm.group(1))
+                pending = None
+                if DISC.search(line) and "split_central_disconnected" in line:
+                    marks.append([h, dev_s(line), "disconnected", DISC.search(line).group(1), None, no])
+                elif BOOT.search(line):
+                    seg += 1
+                    marks.append([h, dev_s(line), "boot", "", None, no])
+                else:
+                    dm = DEVICE.search(line)
+                    if dm:
+                        marks.append([h, dev_s(line), "rssi", dm.group(2), dm.group(1), no])
+                    else:
+                        pm = SPLIT_PEER.search(line)
+                        if pm:
+                            peers.add(pm.group(1))
+            if on_line is not None:
+                on_line(no, line, h, seg, notif)
     # keep the scan RSSI of the split peer only (file order, then unwrap)
     marks = [mk for mk in marks if mk[2] != "rssi" or mk[4] in peers]
     _fix_host(notifs, 3, marks, 5)
     return notifs, marks
 
 
+def bitmap_changes(bits, prev):
+    """Positions that differ between two 16-byte split position bitmaps, in
+    position order: [(position, pressed), ...].  The one place the bitmaps are
+    unpacked (crosshalf.py and samehalf.py use it too)."""
+    out = []
+    for i in range(16):
+        x = bits[i] ^ prev[i]
+        if not x:
+            continue
+        for bit in range(8):
+            if x >> bit & 1:
+                out.append((i * 8 + bit, bool(bits[i] >> bit & 1)))
+    return out
+
+
 def transitions(notifs):
     out, prev = [], (0,) * 16
-    for j, (h, d, bits, no, _seg) in enumerate(notifs):
-        for i in range(16):
-            x = bits[i] ^ prev[i]
-            for bit in range(8):
-                if x >> bit & 1:
-                    out.append((j, i * 8 + bit, bool(bits[i] >> bit & 1)))
+    for j, (_h, _d, bits, _no, _seg) in enumerate(notifs):
+        out += [(j, pos, pressed) for pos, pressed in bitmap_changes(bits, prev)]
         prev = bits
     return out
 
 
-def match(pev, notifs):
+def match(pev, notifs, trans=None):
     """Pair central transitions with peripheral events, per position, in order.
 
     Returns (pairs, dropped, unmatched): pairs are (peripheral index,
     notification index); dropped are peripheral indices that fell out of the
-    window without a transition; unmatched are transitions with no event."""
+    window without a transition; unmatched are transitions with no event.
+    `trans` is transitions(notifs) when the caller already has it."""
     by_pos = defaultdict(list)
     for k, e in enumerate(pev):
         by_pos[e[2]].append(k)
     ptr = defaultdict(int)
     matched = set()
     pairs, dropped, unmatched = [], [], []
-    for j, pos, pressed in transitions(notifs):
+    for j, pos, pressed in (transitions(notifs) if trans is None else trans):
         hc = notifs[j][0]
         if hc is None:
             unmatched.append((j, pos, pressed))
@@ -271,29 +320,51 @@ def _latencies_segment(pev, notifs, pairs):
     xm, ym = statistics.fmean(xs), statistics.fmean(ys)
     sxx = sum((x - xm) ** 2 for x in xs)
     slope = sum((x - xm) * (y - ym) for x, y in zip(xs, ys)) / sxx if sxx else 0.0
-    out = []
-    for idx, (t, dd, pk, cj) in enumerate(d):
+    # The baseline of a point is the smallest y - slope * (x - t) in its
+    # window.  Which point that is does not depend on t (adding slope * t to
+    # every candidate keeps their order), so adj = y - slope * x picks it in
+    # one sliding-window pass; the baseline itself is still computed from the
+    # winner the way it always was.
+    adj = [y - slope * x for x, y in zip(xs, ys)]
+    n = len(d)
+    wide, wide_bounds, narrow = [], [], []
+    for idx, t in enumerate(xs):
         lo = bisect.bisect_left(xs, t - 30.0)
         hi = bisect.bisect_right(xs, t + 30.0)
         if hi - lo >= 5:
-            base = min(d[m][1] - slope * (d[m][0] - t) for m in range(lo, hi))
+            wide.append(idx)
+            wide_bounds.append((lo, hi))
         else:
-            base = min(d[m][1] - slope * (d[m][0] - t) for m in range(max(0, idx - 5), min(len(d), idx + 6)))
+            narrow.append(idx)   # too few neighbours in time: a fixed +-5 window
+    best = [0] * n
+    for idx, m in zip(wide, window_min_index(adj, wide_bounds)):
+        best[idx] = m
+    for idx in narrow:
+        best[idx] = min(range(max(0, idx - 5), min(n, idx + 6)), key=adj.__getitem__)
+    out = []
+    for idx, (t, dd, pk, cj) in enumerate(d):
+        m = best[idx]
+        base = d[m][1] - slope * (d[m][0] - t)
         gap = (pev[pk][1] - pev[pk - 1][1]) * 1e3 if pk > 0 else float("inf")
         out.append({"ms": (dd - base) * 1e3, "pidx": pk, "cidx": cj, "gap_ms": gap})
     return out
 
 
 def pct(vals, p):
+    """The p-th percentile (p in 0..1) of an unsorted list; analyze_latency.py
+    does the picking, with the percentage in 0..100."""
     if not vals:
         return float("nan")
-    v = sorted(vals)
-    return v[max(0, min(len(v) - 1, int(round(p * (len(v) - 1)))))]
+    return al.percentile(sorted(vals), p * 100.0)
 
 
 def summary(vals):
-    return {"count": len(vals), "p50": pct(vals, .5), "p90": pct(vals, .9), "p95": pct(vals, .95),
-            "p99": pct(vals, .99), "max": max(vals) if vals else float("nan")}
+    v = sorted(vals)
+    if not v:
+        nan = float("nan")
+        return {"count": 0, "p50": nan, "p90": nan, "p95": nan, "p99": nan, "max": nan}
+    return {"count": len(v), "p50": al.percentile(v, 50), "p90": al.percentile(v, 90),
+            "p95": al.percentile(v, 95), "p99": al.percentile(v, 99), "max": v[-1]}
 
 
 def fmt(name, s):
@@ -339,7 +410,8 @@ def main(argv=None):
         print("no matching events found - check that the debug snippet is enabled and both logs "
               "carry [host ..] timestamps (scripts/log/capture.py)", file=sys.stderr)
         return 1
-    pairs, dropped, unmatched = match(pev, notifs)
+    trans = transitions(notifs)
+    pairs, dropped, unmatched = match(pev, notifs, trans)
     lat = latencies(pev, notifs, pairs)
 
     disc = sorted(m[0] for m in pmarks + cmarks if m[2] in ("disconnected", "boot") and m[0] is not None)
@@ -361,7 +433,7 @@ def main(argv=None):
                 lost_taps.append((p0, k))
 
     print(f"peripheral: {len(pev)} key events   central: {len(notifs)} notifications, "
-          f"{sum(1 for _ in transitions(notifs))} transitions")
+          f"{len(trans)} transitions")
     print(f"delivered: {len(pairs)}   lost (no transition on the central): {len(dropped)}   "
           f"lost taps (press and release): {len(lost_taps)}   central transitions without a peripheral line: {len(unmatched)}")
     qf = [m for m in pmarks if m[2] == "queue full"]
@@ -372,21 +444,22 @@ def main(argv=None):
 
     all_ms = [x["ms"] for x in lat]
     clean = [x for x in lat if not near_disc(pev[x['pidx']][0])]
+    vals = [x["ms"] for x in clean]
     fast = [x["ms"] for x in clean if x["gap_ms"] < args.burst_ms]
     slow = [x["ms"] for x in clean if x["gap_ms"] >= args.burst_ms]
+    s_all, s_clean, s_fast, s_slow = (summary(all_ms), summary(vals), summary(fast), summary(slow))
     print(f"\nsplit-link delay above the local best case (ms); 'clean' = not within {args.exclude_s:.0f} s of a disconnect or boot")
-    print(fmt("all delivered events", summary(all_ms)))
-    print(fmt("clean", summary([x['ms'] for x in clean])))
-    print(fmt(f"clean, fast typing (gap < {args.burst_ms:.0f} ms)", summary(fast)))
-    print(fmt(f"clean, slower (gap >= {args.burst_ms:.0f} ms)", summary(slow)))
+    print(fmt("all delivered events", s_all))
+    print(fmt("clean", s_clean))
+    print(fmt(f"clean, fast typing (gap < {args.burst_ms:.0f} ms)", s_fast))
+    print(fmt(f"clean, slower (gap >= {args.burst_ms:.0f} ms)", s_slow))
     edges = [0, 2.5, 5, 7.5, 10, 15, 20, 30, 50, 100, 250, 1000, float("inf")]
-    vals = [x["ms"] for x in clean]
     print("  clean histogram:")
     for a, b in zip(edges, edges[1:]):
         c = sum(1 for v in vals if a <= v < b)
         print(f"    {a:6.1f}-{b:<6.1f} {'#' * min(60, c * 60 // max(1, len(vals)))} {c}")
 
-    worst = sorted(lat, key=lambda x: -x["ms"])[:15]
+    worst = heapq.nlargest(15, lat, key=lambda x: x["ms"])
     if worst:
         print("\nslowest 15 delivered events:")
         for x in worst:
@@ -421,7 +494,7 @@ def main(argv=None):
                 "peripheral_events": len(pev), "central_notifications": len(notifs),
                 "delivered": len(pairs), "lost": len(dropped), "lost_taps": len(lost_taps),
                 "unmatched_central": len(unmatched), "queue_full": len(qf), "error_notifying": len(en),
-                "all": summary(all_ms), "clean": summary(vals), "clean_fast": summary(fast), "clean_slow": summary(slow),
+                "all": s_all, "clean": s_clean, "clean_fast": s_fast, "clean_slow": s_slow,
                 "lost_events": [{"host": tod(pev[k][0]), "position": pev[k][2], "pressed": pev[k][3]} for k in dropped],
             }, fh, indent=2)
         print(f"\nwrote {args.json}")

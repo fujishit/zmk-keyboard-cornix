@@ -34,30 +34,39 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import bisect
 import json
 import os
 import re
 import statistics
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "log"))
+import analyze_drops as ad  # noqa: E402
+import analyze_latency as al  # noqa: E402
+
+# A simulated ZMK writes the same log lines as a real one, so every pattern
+# below that is not BabbleSim- or host-stub-specific comes from the two log
+# analyzers in scripts/log/ instead of being repeated here.
 # "d_00: @00:00:15.044678  ..." -- BabbleSim device time, microseconds.
 BSIM_TS = re.compile(r"@(\d+):(\d+):(\d+)\.(\d+)")
-# "[00:00:15.044,677] <dbg> ..." -- Zephyr kernel uptime, same clock.
-ZEPHYR_TS = re.compile(r"\[(\d+):(\d+):(\d+)\.(\d+),(\d+)\]")
+# "[00:00:15.044,677] <dbg> ..." -- Zephyr kernel uptime, same clock; the
+# analyzer's pattern has a sixth group with the rest of the line.
+ZEPHYR_TS = al.TS_ONLY_RE
 
-POSITION = re.compile(r"Row: (\d+), col: (\d+), position: (\d+), pressed: (true|false)")
-LISTENER = re.compile(r"split_peripheral_listener:")
-NOTIFICATION = re.compile(r"\[NOTIFICATION\] data \S+ length (\d+)")
-TRIGGER = re.compile(r"Trigger key position state change of type (\d+)")
-KEYMAP = re.compile(r"layer_id: (\d+) position: (\d+), binding name: (\S+)")
+POSITION = al.EVENT_RE["position"]
+LISTENER = re.compile(r"split_peripheral_listener:")   # substring, not the analyzer's whole-message match
+NOTIFICATION = al.EVENT_RE["notify"]
+TRIGGER = al.EVENT_RE["trigger"]
+KEYMAP = al.EVENT_RE["keymap"]
 SUBSCRIBED = re.compile(r"\[SUBSCRIBED\]")
-CONN_PARAM = re.compile(r"interval (\d+) latency (\d+) timeout (\d+)")
-NEW_CONN_PARAM = re.compile(r"New connection params: Interval: (\d+), Latency: (\d+), PHY: (\d+)")
+CONN_PARAM = al.BLE_RE["param_update"]
+NEW_CONN_PARAM = al.BLE_RE["conn_params"]
 # zmk/app/src/ble.c le_param_updated(), which fires for *every* connection the
 # central holds, so the peer address is what tells the two links apart.
 LE_PARAM_UPDATED = re.compile(
     r"le_param_updated: ([0-9A-Fa-f:]{17}) \(\w+\): interval (\d+) latency (\d+) timeout (\d+)")
-SPLIT_PEER = re.compile(r"split_central_connected: Connected: ([0-9A-Fa-f:]{17})")
+SPLIT_PEER = ad.SPLIT_PEER
 # tests/bsim/host/src/main.c
 HOST_REPORT = re.compile(r"\[HOST HID REPORT\] n=(\d+) handle=(\d+) length=(\d+) data=(\S+)")
 HOST_PARAMS = re.compile(r"\[HOST PARAMS\] interval (\d+) latency (\d+) timeout (\d+)")
@@ -66,8 +75,8 @@ HOST_PARAM_REQ = re.compile(
 HOST_READY = re.compile(r"\[HOST READY\]")
 # zmk/app/src/split/bluetooth/service.c send_position_state(): the 10-deep
 # notify queue overflowed and the oldest state was discarded (a lost event).
-QUEUE_FULL = re.compile(r"Position state message queue full")
-NOTIFY_ERROR = re.compile(r"Error notifying (-?\d+)")
+QUEUE_FULL = ad.QFULL
+NOTIFY_ERROR = ad.ERRN
 HOST_CONNECTED = re.compile(r"\[HOST CONNECTED\]")
 BLE_HINT = re.compile(
     r"Connected|Disconnected|Security|SUBSCRIBED|split service|connection params|"
@@ -84,7 +93,7 @@ def timestamp_us(line):
         return ((h * 3600 + mi * 60 + s) * 1_000_000) + us
     m = ZEPHYR_TS.search(line)
     if m:
-        h, mi, s, ms, us = (int(x) for x in m.groups())
+        h, mi, s, ms, us = (int(m.group(i)) for i in range(1, 6))
         return ((h * 3600 + mi * 60 + s) * 1_000_000) + ms * 1000 + us
     return None
 
@@ -106,11 +115,18 @@ def parse_log(path):
         "host_param_reqs": [],# (t_us, min, max, latency, timeout)
         "host_ready": [],     # t_us -- host subscribed to every HID report
         "host_connected": [], # t_us
+        "queue_full": 0,      # notify queue overflowed: a key event was lost
+        "notify_errors": 0,   # bt_gatt_notify() returned an error
         "lines": 0,
     }
     with open(path, "r", errors="replace") as fh:
         for line in fh:
             out["lines"] += 1
+            # counted before the timestamp check: these are warnings, not events
+            if QUEUE_FULL.search(line):
+                out["queue_full"] += 1
+            if NOTIFY_ERROR.search(line):
+                out["notify_errors"] += 1
             t = timestamp_us(line)
             if t is None:
                 continue
@@ -224,14 +240,12 @@ def pair_events(periph_positions, central_keymap, warmup_position, ready_us):
 
 def next_after(events, t):
     """First timestamp in the sorted list `events` that is >= t, or None."""
-    import bisect
     i = bisect.bisect_left(events, t)
     return events[i] if i < len(events) else None
 
 
 def last_before(events, t):
     """Last timestamp in the sorted list `events` that is <= t, or None."""
-    import bisect
     i = bisect.bisect_right(events, t)
     return events[i - 1] if i else None
 
@@ -240,16 +254,12 @@ def stats_ms(deltas_us):
     if not deltas_us:
         return None
     ms = sorted(d / 1000.0 for d in deltas_us)
-
-    def pct(p):
-        return ms[max(0, min(len(ms) - 1, int(round(p * (len(ms) - 1)))))]
-
     return {
         "count": len(ms),
         "min": ms[0],
         "median": statistics.median(ms),
-        "p95": pct(0.95),
-        "p99": pct(0.99),
+        "p95": al.percentile(ms, 95),
+        "p99": al.percentile(ms, 99),
         "max": ms[-1],
         "mean": statistics.fmean(ms),
     }
@@ -262,14 +272,6 @@ def fmt_stats(name, st):
         f"  {name:<34} n={st['count']:<4d} min={st['min']:7.2f}  median={st['median']:7.2f}"
         f"  p95={st['p95']:7.2f}  p99={st['p99']:7.2f}  max={st['max']:7.2f}"
     )
-
-
-def count_lines(path, pattern):
-    try:
-        with open(path, "r", errors="replace") as fh:
-            return sum(1 for l in fh if pattern.search(l))
-    except OSError:
-        return 0
 
 
 def tail_ble_lines(path, count=12):
@@ -300,6 +302,7 @@ def analyse(log_dir, latency, warmup_position):
         periph["positions"], central["keymap"], warmup_position, ready_us
     )
 
+    lost = len(unmatched)
     result = {
         "latency": latency,
         "peripheral_log": periph_path,
@@ -307,13 +310,13 @@ def analyse(log_dir, latency, warmup_position):
         "peripheral_key_events": len(periph["positions"]),
         "central_keymap_events": len(central["keymap"]),
         "matched": len(pairs),
-        "unmatched": len(unmatched),
+        "unmatched": lost,
         # key events the central never acted on = lost on the split link
         # (the peripheral logs "Position state message queue full" when its
         # notify queue overflowed, see queue_full below)
-        "dropped": len(unmatched),
-        "queue_full": count_lines(periph_path, QUEUE_FULL),
-        "notify_errors": count_lines(periph_path, NOTIFY_ERROR),
+        "dropped": lost,
+        "queue_full": periph["queue_full"],
+        "notify_errors": periph["notify_errors"],
         "dropped_warmup": dropped,
         "link_ready_us": ready_us,
         "position_offset": offset,

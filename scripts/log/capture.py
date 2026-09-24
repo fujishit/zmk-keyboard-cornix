@@ -205,7 +205,7 @@ class ComPort(NamedTuple):
 
 def strip_ansi(text: str) -> str:
     """Drop ANSI SGR/CSI escapes (the debug snippet disables colour, belt and braces)."""
-    return _ANSI_RE.sub("", text)
+    return _ANSI_RE.sub("", text) if "\x1b" in text else text
 
 
 def normalize_com(name: str) -> str:
@@ -679,14 +679,13 @@ class Capture:
                          getattr(self.args, "pause_seconds", DEFAULT_PAUSE_SECONDS)),
                       file=sys.stderr)
         announced_wait = False
-        open_failed = False
         try:
             while True:
                 if self.wait_out_pause():
                     # The device very likely rebooted while we were away, so
                     # re-resolve the port instead of trusting the old name.
                     announced_wait = False
-                    open_failed = False
+                    self._open_failed = None
                 if self.use_com:
                     com = self.resolve_com_port()
                     if com is None:
@@ -696,15 +695,16 @@ class Capture:
                         time.sleep(self.args.retry)
                         continue
                     announced_wait = False
-                    if not open_failed:
+                    # read_com_until_disconnect() sets _open_failed itself, so
+                    # remember here whether this is the first failure in a row.
+                    was_failing = self._open_failed is not None
+                    if not was_failing:
                         self.note("opening %s @ %d (via %s)" % (com, self.args.baud, PS_EXE))
                     rc = self.read_com_until_disconnect(com)
                     if rc == PS_EXIT_OPEN_FAILED:
-                        if not open_failed:
-                            open_failed = True
+                        if not was_failing:
                             self.note("%s could not be opened, retrying" % com)
                     else:
-                        open_failed = False
                         self.note("device disconnected, waiting for it to come back")
                     time.sleep(self.args.retry)
                     continue

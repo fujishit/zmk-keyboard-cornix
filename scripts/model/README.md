@@ -235,7 +235,7 @@ timestamps — it says so and lists the stages it did find.
   `mean_wait_no_wake_ms`, `idle_wakes_per_s`, `supervision_timeout_ms`,
   `grid_t0_ms`.
 * `stages` — one entry per stage, each with `count / min / median / p95 / max /
-  unit` (the same keys `analyze_latency.py`'s `summarize()` produces) and
+  unit` (they are produced by `analyze_latency.py`'s own `summarize()`) and
   `samples` (suppressed by `--no-samples`), each sample carrying `ms`, `key`,
   `t_press_ms`, `event` (connection-event index) and `retries`.
 * `wake` — `attended_events`, `idle_wakes`, `span_s`, `events_per_s`.

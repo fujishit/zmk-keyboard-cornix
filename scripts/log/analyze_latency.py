@@ -72,7 +72,7 @@ class Line:
         return "Line(%d, %r)" % (self.no, self.raw[:60])
 
 
-def _host_seconds(h: str, m: str, s: str, frac: str) -> float:
+def host_seconds(h: str, m: str, s: str, frac: str) -> float:
     return int(h) * 3600 + int(m) * 60 + int(s) + int(frac.ljust(6, "0")[:6]) / 1e6
 
 
@@ -85,7 +85,7 @@ def parse_line(raw: str, no: int = 0) -> Line | None:
     s = ANSI_RE.sub("", raw)
     m = HOST_RE.match(s)
     if m:
-        line.t_host = _host_seconds(*m.groups())
+        line.t_host = host_seconds(*m.groups())
         s = s[m.end():]
     z = ZEPHYR_RE.search(s)
     if z:
@@ -110,15 +110,25 @@ def parse_line(raw: str, no: int = 0) -> Line | None:
     return line
 
 
-def parse_file(path: str) -> list[Line]:
+class Lines(list):
+    """The parsed lines of one file plus `segments`, the number of device-clock
+    runs assign_segments() found (so nothing has to recompute max(seg))."""
+
+    __slots__ = ("segments",)
+
+    def __init__(self, items=(), segments: int = 1) -> None:
+        super().__init__(items)
+        self.segments = segments
+
+
+def parse_file(path: str) -> Lines:
     lines: list[Line] = []
     with open(path, "r", encoding="utf-8", errors="replace") as fh:
         for no, raw in enumerate(fh, 1):
             ln = parse_line(raw, no)
             if ln is not None:
                 lines.append(ln)
-    assign_segments(lines)
-    return lines
+    return Lines(lines, assign_segments(lines))
 
 
 def assign_segments(lines: list[Line], reset_threshold: float = 5.0) -> int:
@@ -183,6 +193,11 @@ BLE_PATTERNS = [
      lambda m: {"err": int(m.group(1))}),
 ]
 
+# Other tools key on single stages/parameters (scripts/log/analyze_drops.py,
+# scripts/bsim/measure.py); they take the pattern from here instead of copying it.
+EVENT_RE = {kind: rx for kind, rx, _conv in EVENT_PATTERNS}
+BLE_RE = {kind: rx for kind, rx, _conv in BLE_PATTERNS}
+
 # dbg/inf lines that are worth listing next to the wrn/err ones
 WARN_RE = re.compile(
     r"queue full|Error notifying|FAILED TO SEND|Failed to|failed|ENOMEM|\(-\d+\)|[Tt]imeout|"
@@ -192,7 +207,7 @@ NUM_RE = re.compile(r"0x[0-9A-Fa-f]+|-?\d+")
 
 
 class Event:
-    __slots__ = ("kind", "line", "fields", "prev", "next", "label")
+    __slots__ = ("kind", "line", "fields", "prev", "next")
 
     def __init__(self, kind: str, line: Line, fields: dict) -> None:
         self.kind = kind
@@ -200,7 +215,6 @@ class Event:
         self.fields = fields
         self.prev: Event | None = None
         self.next: Event | None = None
-        self.label = ""
 
     @property
     def t(self) -> float:
@@ -313,8 +327,7 @@ def aligned_time(ev: Event, offsets: dict[int, dict]) -> float | None:
 # per-device pairing
 # --------------------------------------------------------------------------
 class DeviceStats:
-    def __init__(self, label: str) -> None:
-        self.label = label
+    def __init__(self) -> None:
         self.stages: dict[str, list[dict]] = defaultdict(list)
         self.unmatched: dict[str, int] = defaultdict(int)
         self.events: list[Event] = []
@@ -325,7 +338,7 @@ def _add(stats: DeviceStats, stage: str, a: Event, b: Event) -> None:
     stats.stages[stage].append({"ms": (b.t - a.t) * 1e3, "from_line": a.line.no, "to_line": b.line.no})
 
 
-def pair_device(events: list[Event], label: str, window_s: float) -> DeviceStats:
+def pair_device(events: list[Event], window_s: float) -> DeviceStats:
     """Link the events of one device into chains and collect stage latencies.
 
     kscan(row,col,pressed) -> position(row,col,pressed)    keyed match
@@ -334,7 +347,7 @@ def pair_device(events: list[Event], label: str, window_s: float) -> DeviceStats
     trigger | position(position) -> keymap(position)        closest preceding candidate
     keymap -> hid                                           only if no other event intervenes
     """
-    st = DeviceStats(label)
+    st = DeviceStats()
     st.events = events
     kinds = {e.kind for e in events}
     if "split_listener" in kinds and "notify" not in kinds:
@@ -537,6 +550,16 @@ def fmt_ms(x: float) -> str:
     return "%.2f" % x
 
 
+# The stage table is printed by scripts/model/split_latency_model.py too, so
+# that a model run and an analyzer run can be read side by side.
+TABLE_HEADER = "  %-58s %6s %8s %8s %8s %8s" % ("stage", "count", "min", "median", "p95", "max")
+
+
+def table_row(name: str, s: dict) -> str:
+    return "  %-58s %6d %8s %8s %8s %8s" % (name, s["count"], fmt_ms(s["min"]), fmt_ms(s["median"]),
+                                            fmt_ms(s["p95"]), fmt_ms(s["max"]))
+
+
 def report_text(result: dict, show_hist: bool, verbose: bool) -> str:
     out: list[str] = []
     for f in result["files"]:
@@ -553,10 +576,9 @@ def report_text(result: dict, show_hist: bool, verbose: bool) -> str:
         return "\n".join(out)
 
     out.append("latency per stage (ms)")
-    out.append("  %-58s %6s %8s %8s %8s %8s" % ("stage", "count", "min", "median", "p95", "max"))
+    out.append(TABLE_HEADER)
     for name, s in result["stages"].items():
-        out.append("  %-58s %6d %8s %8s %8s %8s" % (name, s["count"], fmt_ms(s["min"]), fmt_ms(s["median"]),
-                                                   fmt_ms(s["p95"]), fmt_ms(s["max"])))
+        out.append(table_row(name, s))
         if show_hist:
             out.extend(histogram([x["ms"] for x in s["samples"]]))
         if verbose:
@@ -609,7 +631,7 @@ def analyze(paths: list[tuple[str, str]], window_ms: float = 2000.0, max_warning
     for label, path in paths:
         lines = parse_file(path)
         events = extract_events(lines)
-        st = pair_device(events, label, window_s)
+        st = pair_device(events, window_s)
         devices[label] = st
         offsets[label] = clock_offsets(lines)
         for b in extract_ble(lines):
@@ -619,7 +641,7 @@ def analyze(paths: list[tuple[str, str]], window_ms: float = 2000.0, max_warning
             w["label"] = label
             warnings.append(w)
         files.append({"path": path, "label": label, "role_hint": st.role_hint, "lines": len(lines),
-                      "events": len(events), "segments": (max((l.seg for l in lines), default=0) + 1),
+                      "events": len(events), "segments": lines.segments,
                       "clock_offsets": offsets[label]})
 
     stages: dict[str, list[dict]] = {}
@@ -653,13 +675,58 @@ def analyze(paths: list[tuple[str, str]], window_ms: float = 2000.0, max_warning
     }
 
 
-def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
-                                formatter_class=argparse.RawDescriptionHelpFormatter,
-                                epilog=__doc__.split("\n\n", 1)[1])
-    p.add_argument("files", nargs="*", help="log file(s); a single positional file is analyzed alone")
+def doc_parser(doc: str) -> argparse.ArgumentParser:
+    """Parser whose --help is the module docstring: first paragraph, then the rest."""
+    return argparse.ArgumentParser(description=doc.split("\n\n")[0],
+                                   formatter_class=argparse.RawDescriptionHelpFormatter,
+                                   epilog=doc.split("\n\n", 1)[1])
+
+
+def add_log_arguments(p: argparse.ArgumentParser,
+                      files_help: str = "log file(s)") -> None:
+    """The log-selection arguments every tool here takes."""
+    p.add_argument("files", nargs="*", help=files_help)
     p.add_argument("--peripheral", metavar="LOG", help="log captured from the peripheral (right) half")
     p.add_argument("--central", metavar="LOG", help="log captured from the central (left half or dongle)")
+
+
+def paths_from_args(args: argparse.Namespace, offset_files: bool = True) -> list[tuple[str, str]]:
+    """(label, path) pairs from --peripheral/--central and the positional files.
+
+    offset_files=True (this tool): the positional files continue the numbering
+    after --peripheral/--central, so `--peripheral P extra.log` labels extra.log
+    "device2".  False (analyze_ble.py): the files are numbered on their own and
+    a lone file is always "device".  Both spellings are kept deliberately; the
+    label only names the file in the report and in the JSON.
+    """
+    paths: list[tuple[str, str]] = []
+    if getattr(args, "peripheral", None):
+        paths.append(("peripheral", args.peripheral))
+    if getattr(args, "central", None):
+        paths.append(("central", args.central))
+    base = len(paths) if offset_files else 0
+    for i, f in enumerate(args.files, 1):
+        alone = len(args.files) == 1 and (base == 0 or not offset_files)
+        paths.append(("device" if alone else "device%d" % (base + i), f))
+    return paths
+
+
+def emit_json(json_arg: str | None, result: dict, text: str, note: bool = True) -> None:
+    """Print the report, or the whole result as JSON when --json is '-'."""
+    if json_arg == "-":
+        print(json.dumps(result, indent=2))
+        return
+    print(text)
+    if json_arg:
+        with open(json_arg, "w", encoding="utf-8") as fh:
+            json.dump(result, fh, indent=2)
+        if note:
+            print("json written to %s" % json_arg)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = doc_parser(__doc__)
+    add_log_arguments(p, "log file(s); a single positional file is analyzed alone")
     p.add_argument("--window", type=float, default=2000.0, help="max ms between linked events (default 2000)")
     p.add_argument("--json", metavar="FILE", help="also write the full result as JSON ('-' for stdout)")
     p.add_argument("--no-samples", action="store_true", help="omit per-event samples from the JSON")
@@ -671,26 +738,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    paths: list[tuple[str, str]] = []
-    if args.peripheral:
-        paths.append(("peripheral", args.peripheral))
-    if args.central:
-        paths.append(("central", args.central))
-    for f in args.files:
-        paths.append(("device" if len(args.files) == 1 and not paths else "device%d" % (len(paths) + 1), f))
+    paths = paths_from_args(args)
     if not paths:
         build_parser().print_usage(sys.stderr)
         return 2
     result = analyze(paths, args.window, args.max_warnings, keep_samples=not args.no_samples)
-    text = report_text(result, args.hist, args.verbose)
-    if args.json == "-":
-        print(json.dumps(result, indent=2))
-    else:
-        print(text)
-        if args.json:
-            with open(args.json, "w", encoding="utf-8") as fh:
-                json.dump(result, fh, indent=2)
-            print("json written to %s" % args.json)
+    emit_json(args.json, result, report_text(result, args.hist, args.verbose))
     return 0 if result["stages"] else 1
 
 

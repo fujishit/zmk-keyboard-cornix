@@ -366,8 +366,14 @@ class ReportTests(unittest.TestCase):
         sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..", "..", "scripts", "log")))
         import analyze_latency as al
         expected = "  %-58s %6s %8s %8s %8s %8s" % ("stage", "count", "min", "median", "p95", "max")
-        self.assertEqual(m.TABLE_HEADER, expected)
-        self.assertEqual(al.fmt_ms(12.345), m.fmt_ms(12.345))
+        self.assertEqual(al.TABLE_HEADER, expected)
+        # the model does not copy them, it prints the analyzer's own table
+        self.assertIs(m.TABLE_HEADER, al.TABLE_HEADER)
+        self.assertIs(m.table_row, al.table_row)
+        self.assertIs(m.fmt_ms, al.fmt_ms)
+        self.assertIs(m.summarize, al.summarize)
+        self.assertIs(m.percentile, al.percentile)
+        self.assertIs(m.histogram, al.histogram)
 
     def test_report_mentions_the_key_numbers(self):
         rc, out = run_cli("--events", "50", "--sweep", "0,30")

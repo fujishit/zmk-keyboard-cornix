@@ -1,10 +1,14 @@
 """Unit tests for scripts/log/analyze_drops.py (synthetic right/left pair)."""
 
+import bisect
 import json
 import os
+import random
+import statistics
 import sys
 import tempfile
 import unittest
+from collections import defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS = os.path.join(HERE, "..", "..", "scripts", "log")
@@ -55,6 +59,90 @@ LEFT = (
     + central_notif("10:00:02.050", "00:01:42.006,000", [8])
     + central_notif("10:00:02.150", "00:01:42.105,000", [])
 )
+
+
+# --------------------------------------------------------------------------
+# The two windowed minimums are computed with a monotonic deque; these are the
+# straightforward versions they replaced, kept here as the reference.
+# --------------------------------------------------------------------------
+def naive_correct_host(items, seg_index, window_s=120.0):
+    by_seg = defaultdict(list)
+    for it in items:
+        if it[0] is not None and it[1] is not None:
+            by_seg[it[seg_index]].append(it)
+    for lst in by_seg.values():
+        lst.sort(key=lambda it: it[1])
+        devs = [it[1] for it in lst]
+        offs = [it[0] - it[1] for it in lst]
+        for i, it in enumerate(lst):
+            lo = bisect.bisect_left(devs, devs[i] - window_s)
+            hi = bisect.bisect_right(devs, devs[i] + window_s)
+            it[0] = it[1] + min(offs[lo:hi])
+    return items
+
+
+def naive_latencies_segment(pev, notifs, pairs):
+    d = sorted((pev[pk][1], notifs[cj][1] - pev[pk][1], pk, cj) for pk, cj in pairs)
+    if len(d) < 5:
+        return []
+    xs = [x[0] for x in d]
+    ys = [x[1] for x in d]
+    xm, ym = statistics.fmean(xs), statistics.fmean(ys)
+    sxx = sum((x - xm) ** 2 for x in xs)
+    slope = sum((x - xm) * (y - ym) for x, y in zip(xs, ys)) / sxx if sxx else 0.0
+    out = []
+    for idx, (t, dd, pk, cj) in enumerate(d):
+        lo = bisect.bisect_left(xs, t - 30.0)
+        hi = bisect.bisect_right(xs, t + 30.0)
+        if hi - lo >= 5:
+            base = min(d[m][1] - slope * (d[m][0] - t) for m in range(lo, hi))
+        else:
+            base = min(d[m][1] - slope * (d[m][0] - t)
+                       for m in range(max(0, idx - 5), min(len(d), idx + 6)))
+        gap = (pev[pk][1] - pev[pk - 1][1]) * 1e3 if pk > 0 else float("inf")
+        out.append({"ms": (dd - base) * 1e3, "pidx": pk, "cidx": cj, "gap_ms": gap})
+    return out
+
+
+class WindowMinTest(unittest.TestCase):
+    def test_window_min_index_is_exactly_what_min_returns(self):
+        rnd = random.Random(20260924)
+        for _ in range(300):
+            n = rnd.randint(1, 60)
+            devs = sorted(round(rnd.uniform(0, 300), 1) for _ in range(n))
+            # deliberately many duplicate values: min() keeps the leftmost
+            vals = [rnd.choice([0.0, 1.0, -1.0, round(rnd.uniform(-2, 2), 2)]) for _ in range(n)]
+            w = rnd.choice([0.0, 1.0, 30.0, 500.0])
+            bounds = [(bisect.bisect_left(devs, x - w), bisect.bisect_right(devs, x + w)) for x in devs]
+            got = ad.window_min_index(vals, bounds)
+            self.assertEqual(got, [min(range(lo, hi), key=vals.__getitem__) for lo, hi in bounds],
+                             (vals, bounds))
+            self.assertEqual([vals[i] for i in got], [min(vals[lo:hi]) for lo, hi in bounds])
+
+    def test_correct_host_matches_the_naive_window(self):
+        rnd = random.Random(7)
+        items = []
+        for _ in range(500):
+            dev = round(rnd.uniform(0, 900), 3)
+            items.append([dev + 100.0 + rnd.expovariate(2.0), dev, rnd.randrange(3)])
+        items.append([None, 12.0, 0])   # lines without a host stamp are skipped
+        items.append([42.0, None, 1])
+        mine = [list(it) for it in items]
+        ad.correct_host(mine, 2)
+        self.assertEqual(mine, naive_correct_host([list(it) for it in items], 2))
+
+    def test_latencies_match_the_naive_window(self):
+        rnd = random.Random(99)
+        pev, notifs, pairs = [], [], []
+        t = 0.0
+        for i in range(400):
+            # bursts, then long gaps, so both the +-30 s window and the
+            # fixed +-5 fallback are exercised
+            t += rnd.choice([0.05, 0.05, 0.2, 45.0])
+            pev.append([None, t, i % 20, True, i, 0])
+            notifs.append([None, t + 100.0 + rnd.uniform(0, 0.02) + 1e-5 * t, (0,) * 16, i, 0])
+            pairs.append((i, i))
+        self.assertEqual(ad.latencies(pev, notifs, pairs), naive_latencies_segment(pev, notifs, pairs))
 
 
 class AnalyzeDropsTest(unittest.TestCase):

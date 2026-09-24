@@ -16,7 +16,7 @@ multi = []
 prev = (0,) * 16
 for j, n in enumerate(notifs):
     bits = n[2]
-    ch = [i * 8 + k for i in range(16) for k in range(8) if (bits[i] ^ prev[i]) >> k & 1]
+    ch = [pos for pos, _pressed in ad.bitmap_changes(bits, prev)]
     prev = bits
     if len(ch) >= 2:
         multi.append((n, ch))

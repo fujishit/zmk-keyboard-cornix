@@ -40,23 +40,34 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import bisect
 import json
 import os
 import re
 import sys
 from collections import defaultdict
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.dirname(HERE))   # scripts/, for remap.py
 import analyze_drops as ad  # noqa: E402
 
 TRIGGER = re.compile(r"Trigger key position state change of type 0")
-KEYMAP = re.compile(r"layer_id: (\d+) position: (\d+), binding name: (\S+)")
-HID = re.compile(r"hid_listener_keycode_(pressed|released)")
 
-RIGHT_POS = set(range(6, 12)) | set(range(18, 24)) | set(range(31, 38)) | set(range(44, 50))
-BASE = ("TAB Q W E R T Y U I O P BSPC CAPS A S D F G H J K L BSLH RET LSHFT Z X C V B MUTE MCLK N M COMMA DOT UP "
-        "FSLH LCTRL LGUI LALT LGUI MO2 SPACE SPACE MO4 MO3 LEFT DOWN RIGHT").split()
+
+def base_labels():
+    """Key names of the Base layer, read from the keymap so they cannot go
+    stale; an empty list (positions are then printed as numbers) if the keymap
+    cannot be parsed."""
+    try:
+        import remap
+        keymap = remap.parse(remap.DEFAULT_KEYMAP)
+        base = keymap.layers[0]
+        return [remap.show_label(b, keymap.display_names) for b in base.bindings]
+    except Exception:
+        return []
+
+
+BASE = base_labels()
 
 
 def key(pos):
@@ -68,44 +79,35 @@ def parse_central_events(path):
 
     Returns (events, notifs): events = [host, dev, pos, pressed, lineno, seg,
     kind, notif_index]; kind 'L' = local kscan, 'R' = remote.  notifs is the
-    same structure analyze_drops.parse_central() returns (for match())."""
-    notifs, _marks = ad.parse_central(path)
-    by_line = {n[3]: j for j, n in enumerate(notifs)}
+    same structure analyze_drops.parse_central() returns (for match()).
+
+    Collected from analyze_drops.parse_central()'s own pass over the file, so
+    the (large) central log is read once."""
     events = []
-    seg = 0
-    prev_bits = (0,) * 16
-    pending = []  # remote transitions of the current notification not yet applied
-    cur_notif = None
-    with open(path, "r", errors="replace") as fh:
-        for no, line in enumerate(fh, 1):
-            if ad.BOOT.search(line):
-                seg += 1
-                prev_bits = (0,) * 16
-                pending = []
-                continue
-            if no in by_line:
-                cur_notif = by_line[no]
-                bits = notifs[cur_notif][2]
-                pending = []
-                for i in range(16):
-                    x = bits[i] ^ prev_bits[i]
-                    for b in range(8):
-                        if x >> b & 1:
-                            pending.append((i * 8 + b, bool(bits[i] >> b & 1)))
-                prev_bits = bits
-                continue
-            m = ad.HOST.match(line)
-            h = ad.host_s(m) if m else None
-            d = ad.dev_s(line)
-            pm = ad.POS.search(line)
-            if pm and d is not None:
-                events.append([h, d, int(pm.group(3)), pm.group(4) == "true", no, seg, "L", None])
-                continue
-            if TRIGGER.search(line) and d is not None:
-                if pending:
-                    pos, pressed = pending.pop(0)
-                    events.append([h, d, pos, pressed, no, seg, "R", cur_notif])
-                continue
+    # [previous bitmap, transitions of the current notification not yet
+    #  applied, index of that notification]
+    state = [(0,) * 16, [], None]
+
+    def collect(no, line, h, seg, notif):
+        if ad.BOOT.search(line):
+            state[0], state[1] = (0,) * 16, []
+            return
+        if notif is not None:
+            state[2], bits = notif[0], notif[1]
+            state[1] = ad.bitmap_changes(bits, state[0])
+            state[0] = bits
+            return
+        d = ad.dev_s(line)
+        if d is None:
+            return
+        pm = ad.POS.search(line)
+        if pm:
+            events.append([h, d, int(pm.group(3)), pm.group(4) == "true", no, seg, "L", None])
+        elif TRIGGER.search(line) and state[1]:
+            pos, pressed = state[1].pop(0)
+            events.append([h, d, pos, pressed, no, seg, "R", state[2]])
+
+    notifs, _marks = ad.parse_central(path, collect)
     ad._fix_host(events, 4, [], 5)
     return events, notifs
 
@@ -136,24 +138,6 @@ def align(pev, cev, notifs, floor_ms):
             e.append(e[1] if e[6] == "L" else None)
             e.append(0.0 if e[6] == "L" else None)
     return n_aligned, len(pairs), len(dropped)
-
-
-def reorders(presses, hold_ms=0.0, max_gap_ms=200.0):
-    """presses: list of (t_true, t_apply, kind, pos, delay, idx) sorted by
-    t_true.  Returns list of (a, b, gap_ms) for consecutive cross-half pairs
-    whose apply order is reversed once local events are held by hold_ms."""
-    out = []
-    for a, b in zip(presses, presses[1:]):
-        if a[2] == b[2]:
-            continue
-        gap = (b[0] - a[0]) * 1e3
-        if gap > max_gap_ms:
-            continue
-        ta = a[1] + (hold_ms / 1e3 if a[2] == "L" else 0)
-        tb = b[1] + (hold_ms / 1e3 if b[2] == "L" else 0)
-        if ta > tb:
-            out.append((a, b, gap))
-    return out
 
 
 def pct(v, p):
@@ -243,21 +227,24 @@ def main(argv=None):
     # had any remote event been applied within the previous 300 ms?
     if rl_rev:
         held_cnt = recent_cnt = 0
+        remote = defaultdict(list)          # segment -> its remote events, in order
+        for e in cev:
+            if e[6] == "R":
+                remote[e[5]].append(e)
+        queries = defaultdict(list)         # segment -> apply times to answer
         for a, b, g in rl_rev:
-            tl = b[1]
-            down = set()
-            recent = False
-            for e in cev:
-                if e[6] != "R" or e[5] != b[6] or e[1] > tl:
-                    continue
-                if e[3]:
-                    down.add(e[2])
-                else:
-                    down.discard(e[2])
-                if tl - e[1] < 0.3:
-                    recent = True
-            held_cnt += bool(down)
-            recent_cnt += recent
+            queries[b[6]].append(b[1])
+        for seg, times in queries.items():
+            evs = remote.get(seg, ())
+            down, last, k = set(), None, 0
+            for tl in sorted(times):
+                while k < len(evs) and evs[k][1] <= tl:
+                    e = evs[k]
+                    down.add(e[2]) if e[3] else down.discard(e[2])
+                    last = e[1] if last is None else max(last, e[1])
+                    k += 1
+                held_cnt += bool(down)
+                recent_cnt += last is not None and tl - last < 0.3
         print(f"  at the overtaking left press: a right key was already down on the central in {held_cnt} of {len(rl_rev)} cases; "
               f"a remote event had been applied within 300 ms in {recent_cnt} of {len(rl_rev)}")
     # exposure: how often is a left key pressed within X ms after a right key

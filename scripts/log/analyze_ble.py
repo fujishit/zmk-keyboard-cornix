@@ -21,12 +21,13 @@ pins (v4.1.0+zmk-fixes); the source of each pattern is noted next to it.
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import sys
 from collections import Counter, defaultdict
 
-from analyze_latency import Line, parse_file  # noqa: E402  (same directory)
+from analyze_latency import (  # noqa: E402  (same directory)
+    Line, Lines, add_log_arguments, doc_parser, emit_json, parse_file, paths_from_args,
+)
 
 # --------------------------------------------------------------------------
 # decoders (Bluetooth Core spec / Zephyr enums)
@@ -193,8 +194,10 @@ def extract(lines: list[Line]) -> list[Finding]:
     return out
 
 
-def count_clock_resets(lines: list[Line]) -> int:
-    return max((ln.seg for ln in lines), default=0)
+def count_clock_resets(lines: Lines) -> int:
+    """Backwards jumps of the device clock, i.e. one less than the number of
+    monotonic segments parse_file() already counted."""
+    return lines.segments - 1
 
 
 def decode(f: Finding) -> str:
@@ -368,35 +371,22 @@ def report_text(result: dict) -> str:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
-                                formatter_class=argparse.RawDescriptionHelpFormatter,
-                                epilog=__doc__.split("\n\n", 1)[1])
-    p.add_argument("files", nargs="*", help="log file(s)")
-    p.add_argument("--peripheral", metavar="LOG")
-    p.add_argument("--central", metavar="LOG")
+    p = doc_parser(__doc__)
+    add_log_arguments(p)
     p.add_argument("--json", metavar="FILE", help="write the result as JSON ('-' for stdout)")
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    paths: list[tuple[str, str]] = []
-    if args.peripheral:
-        paths.append(("peripheral", args.peripheral))
-    if args.central:
-        paths.append(("central", args.central))
-    paths.extend(("device%d" % (i + 1) if len(args.files) > 1 else "device", f) for i, f in enumerate(args.files))
+    # offset_files=False: unlike analyze_latency.py a lone extra file stays
+    # "device" here even next to --peripheral/--central.
+    paths = paths_from_args(args, offset_files=False)
     if not paths:
         build_parser().print_usage(sys.stderr)
         return 2
     result = analyze(paths)
-    if args.json == "-":
-        print(json.dumps(result, indent=2))
-    else:
-        print(report_text(result))
-        if args.json:
-            with open(args.json, "w", encoding="utf-8") as fh:
-                json.dump(result, fh, indent=2)
+    emit_json(args.json, result, report_text(result), note=False)
     if all(f["finding_count"] == 0 for f in result["files"]):
         print("no matching BLE events found - check that the debug snippet is enabled and that the capture "
               "covers a boot / connection attempt", file=sys.stderr)
