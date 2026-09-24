@@ -10,10 +10,14 @@ using QMK keycode names, plus ``encoder_layout[layer][encoder]`` as
 bindings per layer, ordered by *key position* as defined by the board's matrix
 transform.  This script therefore needs two pieces of knowledge:
 
-1. a **matrix table** (``MATRICES``) that maps every ZMK key position to the
+1. a **matrix table** (``CORNIX``) that maps every ZMK key position to the
    ``(row, column)`` cell of the Vial matrix it comes from, and
-2. a **keycode table** (``KEYCODES`` plus the ``_FUNC_*`` handlers) that maps
+2. a **keycode table** (``KEYCODES`` plus the ``Converter`` handlers) that maps
    QMK/Vial keycodes to ZMK bindings.
+
+The printed layout of a layer (the 12 / 12 / 14 / 12 slot grid, the bindings
+padding and the ``// | ... |`` comment) comes from ``scripts/remap.py``, which
+owns the keymap format.
 
 Unknown keycodes are never dropped silently: the conversion fails and lists
 every keycode it could not translate.
@@ -40,10 +44,16 @@ import shlex
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Iterable, Sequence
+from typing import Iterable, Sequence
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+import remap  # noqa: E402  (the keymap layout: slot tables, grid rendering, layer refs)
 
 # ---------------------------------------------------------------------------
-# Matrix tables: ZMK key position -> Vial (row, column)
+# Matrix table: ZMK key position -> Vial (row, column)
 # ---------------------------------------------------------------------------
 
 
@@ -56,10 +66,6 @@ class Matrix:
     columns: int
     #: ZMK key position i comes from Vial cell ``positions[i]``.
     positions: tuple[tuple[int, int], ...]
-    #: Number of display slots per printed row (widest row of the layout).
-    slots: int
-    #: For every printed row, the display slot each of its keys occupies.
-    row_slots: tuple[tuple[int, ...], ...]
     encoders: int = 0
 
     @property
@@ -97,17 +103,9 @@ CORNIX = Matrix(
         + _cells(2, range(0, 6)) + [(2, 6), (5, 6)] + _cells(6, range(5, -1, -1))
         + _cells(3, range(0, 6)) + _cells(7, range(5, -1, -1))
     ),
-    slots=14,
-    row_slots=(
-        (0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13),
-        (0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13),
-        (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13),
-        (0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13),
-    ),
     encoders=2,
 )
-
-MATRICES: dict[str, Matrix] = {"cornix": CORNIX}
+assert CORNIX.key_count == remap.KEY_COUNT
 
 
 # ---------------------------------------------------------------------------
@@ -479,24 +477,19 @@ def _sensor_bindings(encoder_layout: list, index: int, matrix: Matrix, converter
 # Inserting an extra (overlay) layer
 # ---------------------------------------------------------------------------
 
-#: ZMK bindings whose first parameter is a layer number.
-_LAYER_BINDING_RE = re.compile(r"&(mo|tog|to|sl|lt|df)\s+(\d+)")
-#: The same, as the QMK/Vial keycode names printed in the comment grid.
+#: Layer references as the QMK/Vial keycode names printed in the comment grid
+#: (the ZMK `&mo N` form is handled by ``remap.shift_layer_ref``).
 _LAYER_LABEL_RE = re.compile(r"\b(MO|TG|TO|OSL|DF|LT)\((\d+)")
 
 
 def _shift_layer_refs(text: str, index: int) -> str:
     """Renumber layer references at or above ``index`` by one."""
 
-    def binding(match: re.Match[str]) -> str:
-        number = int(match.group(2))
-        return f"&{match.group(1)} {number + 1 if number >= index else number}"
-
     def label(match: re.Match[str]) -> str:
         number = int(match.group(2))
         return f"{match.group(1)}({number + 1 if number >= index else number}"
 
-    return _LAYER_LABEL_RE.sub(label, _LAYER_BINDING_RE.sub(binding, text))
+    return _LAYER_LABEL_RE.sub(label, remap.shift_layer_ref(text, index))
 
 
 def insert_layer(layers: list[Layer], index: int, name: str, matrix: Matrix) -> list[Layer]:
@@ -589,41 +582,8 @@ MOVE_BEHAVIOR = """\
 """
 
 
-def _grid(
-    cells: Sequence[str],
-    matrix: Matrix,
-    widths: Sequence[int],
-    indent: str,
-    separator: str = "  ",
-    trim: bool = True,
-) -> list[str]:
-    """Lay out one layer's cells as printed rows, padded to a common width."""
-    lines: list[str] = []
-    position = 0
-    for slots in matrix.row_slots:
-        row = [""] * matrix.slots
-        for slot in slots:
-            row[slot] = cells[position]
-            position += 1
-        line = indent + separator.join(item.ljust(widths[slot]) for slot, item in enumerate(row))
-        lines.append(line.rstrip() if trim else line)
-    return lines
-
-
-def _slot_widths(layers: Sequence[Layer], matrix: Matrix, pick: Callable[[Layer], Sequence[str]]) -> list[int]:
-    widths = [0] * matrix.slots
-    for layer in layers:
-        cells = pick(layer)
-        position = 0
-        for slots in matrix.row_slots:
-            for slot in slots:
-                widths[slot] = max(widths[slot], len(cells[position]))
-                position += 1
-    return widths
-
-
-def emit(layers: Sequence[Layer], matrix: Matrix, header: str = "") -> str:
-    binding_widths = _slot_widths(layers, matrix, lambda layer: layer.bindings)
+def emit(layers: Sequence[Layer], header: str = "") -> str:
+    binding_widths = remap.slot_widths(layer.bindings for layer in layers)
     text: list[str] = []
     if header:
         text.append(header.rstrip("\n"))
@@ -662,12 +622,10 @@ def emit(layers: Sequence[Layer], matrix: Matrix, header: str = "") -> str:
         text.append(f"        {layer.name} {{")
         text.append(f'            display-name = "{layer.display_name}";')
         text.append("")
-        label_widths = _slot_widths([layer], matrix, lambda one: one.labels)
-        for line in _grid(layer.labels, matrix, label_widths, "            // | ", " | ", trim=False):
-            text.append(line + " |")
+        text.append(remap.render_labels(layer.labels).rstrip("\n"))
         text.append("")
         text.append("            bindings = <")
-        text.extend(_grid(layer.bindings, matrix, binding_widths, ""))
+        text.append(remap.render_bindings(layer.bindings, binding_widths).rstrip("\n"))
         text.append("            >;")
         if layer.sensors:
             text.append("")
@@ -726,7 +684,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("vil", type=Path, help="Vial keymap export (.vil)")
     parser.add_argument("-o", "--output", type=Path, help="write the keymap here (default: stdout)")
-    parser.add_argument("--matrix", default="cornix", choices=sorted(MATRICES), help="matrix table to use")
     parser.add_argument("--layers", type=int, help="convert only the first N layers")
     parser.add_argument("--layer-names", default="", help="comma-separated display names, layer 0 first")
     parser.add_argument(
@@ -752,7 +709,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--no-header", action="store_true", help="omit the generated-from header comment")
     args = parser.parse_args(argv)
 
-    matrix = MATRICES[args.matrix]
+    matrix = CORNIX
     try:
         data = json.loads(args.vil.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -775,7 +732,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     header = "" if args.no_header else build_header(args.vil, argv)
-    text = emit(layers, matrix, header)
+    text = emit(layers, header)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(text, encoding="utf-8")

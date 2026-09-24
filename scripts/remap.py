@@ -52,12 +52,17 @@ import argparse
 import difflib
 import re
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+import check_config  # noqa: E402  (the keymap checks run after every write)
+
 DEFAULT_KEYMAP = REPO_ROOT / "config/cornix.keymap"
 
 #: Cornix layout_50: 50 key positions, printed as 12 / 12 / 14 / 12.
@@ -85,9 +90,9 @@ BUILTIN_BEHAVIORS = frozenset(
     }
 )
 
-#: Behaviours whose first parameter is a layer index.
-LAYER_BEHAVIORS = ("mo", "tog", "to", "sl", "lt", "df")
-_LAYER_BINDING_RE = re.compile(r"&(" + "|".join(LAYER_BEHAVIORS) + r")\s+(\d+)")
+#: Behaviours whose first parameter is a layer index (shared with check_config).
+LAYER_BEHAVIORS = check_config.LAYER_BEHAVIORS
+_LAYER_BINDING_RE = re.compile(r"&(" + "|".join(sorted(LAYER_BEHAVIORS)) + r")\s+(\d+)")
 
 
 class RemapError(Exception):
@@ -251,7 +256,6 @@ class Layer:
     display_name: str
     bindings: list[str]
     #: char offsets into the file text
-    node_start: int
     node_end: int
     node_name_span: tuple[int, int]
     display_span: tuple[int, int]
@@ -261,14 +265,6 @@ class Layer:
     #: set when a layer has to be renumbered (`layer add`)
     new_node_name: str | None = None
 
-    def row_of(self, position: int) -> int:
-        seen = 0
-        for row, slots in enumerate(ROW_SLOTS):
-            seen += len(slots)
-            if position < seen:
-                return row
-        return len(ROW_SLOTS) - 1
-
 
 @dataclass
 class Keymap:
@@ -276,11 +272,10 @@ class Keymap:
     text: str
     layers: list[Layer]
     behaviors: set[str]
-    #: layer index -> display name, for `&mo N` labels
-    edits: list[tuple[int, int, str]] = field(default_factory=list)
 
     @property
     def display_names(self) -> list[str]:
+        """Layer index -> display name, for `&mo N` labels."""
         return [layer.display_name for layer in self.layers]
 
     def find(self, wanted: str) -> Layer:
@@ -304,6 +299,11 @@ def parse(path: Path) -> Keymap:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise RemapError(f"cannot read {path}: {exc}") from exc
+    return parse_text(text, path)
+
+
+def parse_text(text: str, path: Path) -> Keymap:
+    """Parse keymap ``text`` already read from ``path`` (only named in errors)."""
     masked = mask(text)
 
     behaviors: set[str] = set()
@@ -403,7 +403,6 @@ def _parse_layer(text: str, masked: str, index: int, match: re.Match[str], node_
         node_name=node_name,
         display_name=display.group(1),
         bindings=bindings,
-        node_start=match.start(1),
         node_end=node_end,
         node_name_span=(start, end),
         display_span=display.span(1),
@@ -448,7 +447,11 @@ def render_bindings(bindings: Sequence[str], widths: Sequence[int]) -> str:
 
 
 def render_comment(bindings: Sequence[str], indent: str = INDENT) -> str:
-    labels = [comment_label(binding) for binding in bindings]
+    return render_labels([comment_label(binding) for binding in bindings], indent)
+
+
+def render_labels(labels: Sequence[str], indent: str = INDENT) -> str:
+    """The `// | ... |` grid comment for one label per key position."""
     widths = slot_widths([labels])
     lines = []
     for row in _rows(labels):
@@ -531,16 +534,21 @@ def set_bindings(keymap: Keymap, layer: Layer, changes: dict[int, str]) -> None:
     layer.touched = True
 
 
-def shift_layer_refs(keymap: Keymap, index: int) -> None:
-    """Renumber `&mo/&tog/&to/&sl/&lt/&df` references at or above ``index``."""
+def shift_layer_ref(binding: str, index: int) -> str:
+    """``binding`` with its layer reference (if any) at or above ``index`` moved up by one."""
 
     def replace(match: re.Match[str]) -> str:
         number = int(match.group(2))
         return f"&{match.group(1)} {number + 1 if number >= index else number}"
 
+    return _LAYER_BINDING_RE.sub(replace, binding)
+
+
+def shift_layer_refs(keymap: Keymap, index: int) -> None:
+    """Renumber the `&mo/&tog/&to/&sl/&lt/...` references at or above ``index``."""
     for layer in keymap.layers:
         for position, binding in enumerate(layer.bindings):
-            new = _LAYER_BINDING_RE.sub(replace, binding)
+            new = shift_layer_ref(binding, index)
             if new != binding:
                 layer.bindings[position] = new
                 layer.touched = True
@@ -560,8 +568,8 @@ def render_file(
     """
     all_bindings = [layer.bindings for layer in keymap.layers] + [list(item) for item in extra]
     widths = slot_widths(all_bindings)
-    stored = parse_bindings_of(keymap.text)
-    realigned = bool(stored) and widths != slot_widths(stored)
+    stored = [split_bindings(keymap.text[slice(*layer.body_span)]) for layer in keymap.layers]
+    realigned = widths != slot_widths(stored)
 
     edits: list[tuple[int, int, str]] = []
     for layer in keymap.layers:
@@ -583,26 +591,14 @@ def render_file(
     return text
 
 
-def parse_bindings_of(text: str) -> list[list[str]]:
-    """The bindings of every layer as the file currently stores them."""
-    return [
-        split_bindings(match.group(1))
-        for match in re.finditer(r"bindings = <\n(.*?)\n\s*>;", text, re.S)
-    ]
-
-
 # ---------------------------------------------------------------------------
 # Checking and writing
 # ---------------------------------------------------------------------------
 
 
 def run_checks(path: Path) -> list[str]:
-    if str(SCRIPT_DIR) not in sys.path:
-        sys.path.insert(0, str(SCRIPT_DIR))
-    import check_config as cc  # imported late: only needed when writing
-
     warnings: list[str] = []
-    errors = cc.check_keymap(path, KEY_COUNT, warnings, path.as_posix())
+    errors = check_config.check_keymap(path, KEY_COUNT, warnings, path.as_posix())
     errors.extend(f"{path.as_posix()}: {warning}" for warning in warnings if "skipped" in warning)
     return errors
 
@@ -637,12 +633,10 @@ def write(keymap: Keymap, text: str, dry_run: bool, out=sys.stdout) -> int:
 def report(keymap: Keymap, text: str, dry_run: bool, out=sys.stdout) -> int:
     status = write(keymap, text, dry_run, out)
     if status == 0 and not dry_run:
-        fresh = parse(keymap.path)
         for layer in keymap.layers:
             if layer.touched:
-                shown = fresh.layers[layer.index]
-                print(f"\n{shown.index} {shown.display_name}:", file=out)
-                out.write(grid_of(fresh, shown))
+                print(f"\n{layer.index} {layer.display_name}:", file=out)
+                out.write(grid_of(keymap, layer))
     return status
 
 
@@ -652,7 +646,7 @@ def report(keymap: Keymap, text: str, dry_run: bool, out=sys.stdout) -> int:
 
 
 def cmd_show(args: argparse.Namespace, keymap: Keymap, out=sys.stdout) -> int:
-    layers = keymap.layers if args.all or not args.layer else [keymap.find(args.layer)]
+    layers = [keymap.find(args.layer)] if args.layer else keymap.layers
     for position, layer in enumerate(layers):
         if position:
             print(file=out)
@@ -751,9 +745,8 @@ def cmd_layer_add(args: argparse.Namespace, keymap: Keymap, out=sys.stdout) -> i
     text = render_file(keymap, inserted=[(offset, node)], extra=[fresh])
     status = write(keymap, text, args.dry_run, out)
     if status == 0 and not args.dry_run:
-        fresh = parse(keymap.path)
         print(f"\n{index} {name}:", file=out)
-        out.write(grid_of(fresh, fresh.layers[index]))
+        out.write(render_grid(fresh))
     return status
 
 
@@ -780,8 +773,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     show = sub.add_parser("show", help="print the numbered position grid")
-    show.add_argument("--layer", help="layer display name, node name or index")
-    show.add_argument("--all", action="store_true", help="print every layer (the default)")
+    show.add_argument("--layer", help="layer display name, node name or index (default: every layer)")
     show.set_defaults(func=cmd_show)
 
     setter = sub.add_parser("set", help="replace bindings: POS BINDING [POS BINDING ...]")

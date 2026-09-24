@@ -33,6 +33,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import re
 import sys
@@ -115,8 +116,9 @@ KEYMAP_TARGETS: dict[str, tuple[str, ...]] = {
     "config/cornix42.keymap": ("json", "config/cornix42.json", "default_layout"),
 }
 
-# Behaviours whose first parameter is a layer index.
-LAYER_BEHAVIORS = frozenset({"mo", "to", "tog", "sl", "lt"})
+# Behaviours whose first parameter is a layer index.  Public: scripts/remap.py
+# imports this set so the two tools agree on what counts as a layer reference.
+LAYER_BEHAVIORS = frozenset({"df", "mo", "to", "tog", "sl", "lt"})
 
 
 class ParseError(ValueError):
@@ -285,14 +287,29 @@ _PREPROCESSOR_LINE_RE = re.compile(
 _NODE_START_RE = re.compile(r"(?:([A-Za-z_]\w*)\s*:\s*)?(/|&?[A-Za-z_][\w,.+\-@]*)\s*\{")
 
 
+#: A double-quoted string, a /* */ comment or a // comment, whichever starts
+#: first.  Strings are in the alternation so that a ``display-name = "a//b"``
+#: or a brace inside a literal is not mistaken for a comment or a node.
+_C_TOKEN_RE = re.compile(r'"(?:\\.|[^"\\\n])*"|/\*.*?\*/|//[^\n]*', re.DOTALL)
+
+
 def strip_c_comments(text: str) -> str:
-    """Remove /* */ and // comments while preserving line structure."""
+    """Remove /* */ and // comments while preserving line structure.
 
-    def _blank(match: re.Match[str]) -> str:
-        return re.sub(r"[^\n]", " ", match.group(0))
+    String literals are matched first and handed back untouched, so a comment
+    marker inside one cannot swallow the rest of the line (and, after
+    stripping, leave an unbalanced brace behind for the node walker).
+    """
 
-    text = re.sub(r"/\*.*?\*/", _blank, text, flags=re.DOTALL)
-    return re.sub(r"//[^\n]*", "", text)
+    def _replace(match: re.Match[str]) -> str:
+        token = match.group(0)
+        if token.startswith('"'):
+            return token
+        if token.startswith("/*"):
+            return re.sub(r"[^\n]", " ", token)  # keep the line structure
+        return ""
+
+    return _C_TOKEN_RE.sub(_replace, text)
 
 
 def _match_brace(text: str, start: int) -> int:
@@ -330,8 +347,13 @@ def walk_dts_nodes(body: str) -> Iterator[tuple[str | None, str, str]]:
         yield from walk_dts_nodes(inner)
 
 
+@functools.lru_cache(maxsize=512)
 def dts_own_text(inner: str) -> str:
-    """Return the node body with all child nodes removed (properties only)."""
+    """Return the node body with all child nodes removed (properties only).
+
+    Memoised: every dts_property() lookup asks for the same node body, so a
+    node with n properties would otherwise be re-scanned n times.
+    """
     parts: list[str] = []
     position = 0
     while True:
@@ -384,8 +406,14 @@ def dts_int_cells(value: str) -> list[int]:
     return numbers
 
 
+@functools.lru_cache(maxsize=16)
 def prepare_dts(text: str) -> str:
-    """Strip comments and preprocessor lines so node parsing is reliable."""
+    """Strip comments and preprocessor lines so node parsing is reliable.
+
+    Memoised: a single check may prepare the same file's text more than once
+    (cornix-layouts.dtsi is walked for transforms and again for position
+    maps).  Both argument and result are immutable, so sharing is safe.
+    """
     return _PREPROCESSOR_LINE_RE.sub("", strip_c_comments(text))
 
 
@@ -439,8 +467,8 @@ def parse_conf(text: str) -> tuple[dict[str, str], list[str], list[str]]:
 # ---------------------------------------------------------------------------
 
 
-def board_names_from_board_yml(board_yml: Path) -> list[str]:
-    data = load_yaml(board_yml)
+def board_names_from_data(data: Any, board_yml: Path) -> list[str]:
+    """The board names in an already-parsed board.yml (`board_yml` names it)."""
     if not isinstance(data, dict) or not isinstance(data.get("boards"), list):
         raise ParseError(f"{board_yml}: expected a top-level 'boards' list")
     names = []
@@ -449,6 +477,10 @@ def board_names_from_board_yml(board_yml: Path) -> list[str]:
             raise ParseError(f"{board_yml}: every board entry needs a 'name'")
         names.append(str(entry["name"]))
     return names
+
+
+def board_names_from_board_yml(board_yml: Path) -> list[str]:
+    return board_names_from_data(load_yaml(board_yml), board_yml)
 
 
 def local_shield_names(shields_dir: Path) -> set[str]:
@@ -484,7 +516,7 @@ def check_build_yaml(
     build_yaml: Path,
     board_yml: Path,
     shields_dir: Path,
-    warnings: list[str] | None = None,
+    warnings: list[str],
     snippets_dir: Path | None = None,
 ) -> list[str]:
     """Validate one build matrix file against the boards/shields/snippets in the repo.
@@ -493,7 +525,6 @@ def check_build_yaml(
     one of KNOWN_SNIPPETS or a local snippet found under ``snippets_dir``.
     """
     errors: list[str] = []
-    warnings = warnings if warnings is not None else []
     prefix = f"{build_yaml.name}"
 
     try:
@@ -549,18 +580,6 @@ def check_build_yaml(
             if snippet not in known_snippets:
                 errors.append(f"{where}: unknown snippet {snippet!r} (known: {sorted(known_snippets)})")
 
-    # Top-level cartesian board/shield arrays (currently unused, but part of
-    # the ZMK build matrix format).
-    for key in ("board", "shield", "snippet"):
-        for index, value in enumerate(_tokens(data.get(key))):
-            where = f"{prefix}: {key}[{index}]"
-            if key == "board":
-                validate_board(where, value)
-            elif key == "shield":
-                validate_shields(where, value.split())
-            else:
-                validate_snippets(where, value.split())
-
     artifacts: dict[str, str] = {}
     for index, entry in enumerate(includes):
         where = f"{prefix}: include[{index}]"
@@ -603,15 +622,14 @@ def check_build_yaml(
             if key not in {"board", "shield", "snippet", "artifact-name", "cmake-args"}:
                 warnings.append(f"{where}: unexpected key {key!r}")
 
-    if not includes and not data.get("board"):
+    if not includes:
         errors.append(f"{prefix}: no build targets defined")
     return errors
 
 
-def check_build_matrices(root: Path, warnings: list[str] | None = None) -> list[str]:
+def check_build_matrices(root: Path, warnings: list[str]) -> list[str]:
     """Run check_build_yaml over every file in BUILD_MATRIX_FILES."""
     errors: list[str] = []
-    warnings = warnings if warnings is not None else []
     for name, required in BUILD_MATRIX_FILES.items():
         path = root / name
         if not path.is_file():
@@ -626,10 +644,9 @@ def check_build_matrices(root: Path, warnings: list[str] | None = None) -> list[
     return errors
 
 
-def check_snippets(root: Path, warnings: list[str] | None = None) -> list[str]:
+def check_snippets(root: Path, warnings: list[str]) -> list[str]:
     """Every snippets/<name>/snippet.yml must declare name: <name>."""
     errors: list[str] = []
-    warnings = warnings if warnings is not None else []
     snippets_dir = root / SNIPPETS_DIR
     if not snippets_dir.is_dir():
         warnings.append(f"{SNIPPETS_DIR.as_posix()}: skipped: directory does not exist")
@@ -658,10 +675,9 @@ def check_snippets(root: Path, warnings: list[str] | None = None) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def check_west_manifest(west_yml: Path, warnings: list[str] | None = None) -> list[str]:
+def check_west_manifest(west_yml: Path, warnings: list[str]) -> list[str]:
     """Validate the west manifest structure."""
     errors: list[str] = []
-    warnings = warnings if warnings is not None else []
     prefix = west_yml.as_posix()
     try:
         data = load_yaml(west_yml)
@@ -737,12 +753,11 @@ def defconfig_role(path: Path) -> str | None:
 def check_conf_file(
     path: Path,
     is_board_defconfig: bool,
-    warnings: list[str] | None = None,
+    warnings: list[str],
     display: str | None = None,
 ) -> list[str]:
     """Validate a single defconfig / .conf fragment."""
     errors: list[str] = []
-    warnings = warnings if warnings is not None else []
     prefix = display or path.as_posix()
     try:
         values, conflicts, duplicates = parse_conf(path.read_text(encoding="utf-8"))
@@ -778,10 +793,9 @@ def check_conf_file(
     return errors
 
 
-def check_kconfig_fragments(root: Path, warnings: list[str] | None = None) -> list[str]:
+def check_kconfig_fragments(root: Path, warnings: list[str]) -> list[str]:
     """Run check_conf_file over every defconfig and .conf in boards/ and config/."""
     errors: list[str] = []
-    warnings = warnings if warnings is not None else []
     board_dir = root / BOARD_DIR
     defconfigs = sorted(board_dir.glob("*_defconfig"))
     if not defconfigs:
@@ -831,10 +845,9 @@ def parse_layouts(text: str) -> tuple[dict[str, dict[str, Any]], dict[str, dict[
     return transforms, layouts, errors
 
 
-def check_layouts_dtsi(path: Path, warnings: list[str] | None = None) -> list[str]:
+def check_layouts_dtsi(path: Path, warnings: list[str]) -> list[str]:
     """Cross-check transforms, physical layouts and position maps."""
     errors: list[str] = []
-    warnings = warnings if warnings is not None else []
     prefix = path.name
     try:
         text = path.read_text(encoding="utf-8")
@@ -1049,12 +1062,11 @@ def json_layout_key_count(path: Path, layout: str) -> int:
 def check_keymap(
     keymap: Path,
     expected_keys: int | None,
-    warnings: list[str] | None = None,
+    warnings: list[str],
     display: str | None = None,
 ) -> list[str]:
     """Validate one keymap: equal layer sizes, key count, index ranges."""
     errors: list[str] = []
-    warnings = warnings if warnings is not None else []
     prefix = display or keymap.as_posix()
     try:
         layers, info = parse_keymap_layers(keymap.read_text(encoding="utf-8"), keymap.parent)
@@ -1087,10 +1099,9 @@ def check_keymap(
     return errors
 
 
-def check_keymaps(root: Path, warnings: list[str] | None = None) -> list[str]:
+def check_keymaps(root: Path, warnings: list[str]) -> list[str]:
     """Run check_keymap for every keymap listed in KEYMAP_TARGETS."""
     errors: list[str] = []
-    warnings = warnings if warnings is not None else []
     layouts_path = root / LAYOUTS_DTSI
     try:
         _transforms, layouts, _ = parse_layouts(layouts_path.read_text(encoding="utf-8"))
@@ -1132,10 +1143,9 @@ def load_json_lenient(text: str) -> tuple[Any, bool]:
         return json.loads(stripped), True
 
 
-def check_json_files(root: Path, warnings: list[str] | None = None) -> list[str]:
+def check_json_files(root: Path, warnings: list[str]) -> list[str]:
     """Every metadata JSON file must parse (comment lines are a warning)."""
     errors: list[str] = []
-    warnings = warnings if warnings is not None else []
     files = sorted((root / BOARD_DIR / "metadata").glob("*.json")) + sorted((root / CONFIG_DIR).glob("*.json"))
     if not files:
         errors.append("no metadata JSON files found")
@@ -1163,15 +1173,14 @@ def check_json_files(root: Path, warnings: list[str] | None = None) -> list[str]
     return errors
 
 
-def check_board_metadata(root: Path, warnings: list[str] | None = None) -> list[str]:
+def check_board_metadata(root: Path, warnings: list[str]) -> list[str]:
     """board.yml, cornix.zmk.yml and per-board files must agree."""
     errors: list[str] = []
-    warnings = warnings if warnings is not None else []
     board_dir = root / BOARD_DIR
     board_yml = board_dir / "board.yml"
     try:
         data = load_yaml(board_yml)
-        names = board_names_from_board_yml(board_yml)
+        names = board_names_from_data(data, board_yml)
     except (OSError, ParseError) as exc:
         return [f"{board_yml.relative_to(root).as_posix()}: cannot parse: {exc}"]
     for entry in data["boards"]:
@@ -1211,10 +1220,9 @@ def check_board_metadata(root: Path, warnings: list[str] | None = None) -> list[
 REQUIRED_SHIELD_FILES = ("Kconfig.shield", "Kconfig.defconfig")
 
 
-def check_shield_dirs(shields_dir: Path, warnings: list[str] | None = None) -> list[str]:
+def check_shield_dirs(shields_dir: Path, warnings: list[str]) -> list[str]:
     """Every shield directory must carry the files ZMK expects."""
     errors: list[str] = []
-    warnings = warnings if warnings is not None else []
     names = sorted(local_shield_names(shields_dir))
     if not names:
         return [f"{shields_dir.as_posix()}: no shield directories found"]

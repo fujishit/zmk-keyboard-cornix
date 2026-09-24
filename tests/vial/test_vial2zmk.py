@@ -22,6 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 import check_config as cc  # noqa: E402
+import remap  # noqa: E402
 import vial2zmk as v2z  # noqa: E402
 
 FIXTURE = REPO_ROOT / "config/vial/cornix-default-keymap.vil"
@@ -71,7 +72,7 @@ def split_bindings(text: str) -> list[str]:
 def rows(layer: v2z.Layer) -> list[list[str]]:
     result: list[list[str]] = []
     position = 0
-    for slots in v2z.CORNIX.row_slots:
+    for slots in remap.ROW_SLOTS:
         result.append(layer.bindings[position : position + len(slots)])
         position += len(slots)
     return result
@@ -81,7 +82,7 @@ class MatrixTableTest(unittest.TestCase):
     def test_cornix_covers_every_position_exactly_once(self) -> None:
         self.assertEqual(v2z.CORNIX.key_count, 50)
         self.assertEqual(len(set(v2z.CORNIX.positions)), 50)
-        self.assertEqual(sum(len(slots) for slots in v2z.CORNIX.row_slots), 50)
+        self.assertEqual(sum(len(slots) for slots in remap.ROW_SLOTS), 50)
         for row, column in v2z.CORNIX.positions:
             self.assertLess(row, v2z.CORNIX.rows)
             self.assertLess(column, v2z.CORNIX.columns)
@@ -296,7 +297,7 @@ class KeycodeTableTest(unittest.TestCase):
 class EmitTest(unittest.TestCase):
     def setUp(self) -> None:
         self.layers = convert(5)
-        self.text = v2z.emit(self.layers, v2z.CORNIX, v2z.build_header(Path("config/vial/x.vil"), ["x.vil"]))
+        self.text = v2z.emit(self.layers, v2z.build_header(Path("config/vial/x.vil"), ["x.vil"]))
 
     def test_includes_and_structure(self) -> None:
         self.assertIn('compatible = "zmk,keymap";', self.text)

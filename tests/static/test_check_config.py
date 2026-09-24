@@ -320,11 +320,11 @@ class BuildYamlTests(unittest.TestCase):
                 artifact-name: right_debug
             """
         build = write(self.root / "build-debug.yaml", text)
-        errors = cc.check_build_yaml(build, self.board_yml, self.shields, snippets_dir=snippets)
+        errors = cc.check_build_yaml(build, self.board_yml, self.shields, [], snippets_dir=snippets)
         self.assertEqual(len(errors), 1)
         self.assertIn("unknown snippet 'no-yaml'", errors[0])
         # Without a snippets directory the local snippet is unknown.
-        errors = cc.check_build_yaml(build, self.board_yml, self.shields)
+        errors = cc.check_build_yaml(build, self.board_yml, self.shields, [])
         self.assertTrue(any("unknown snippet 'cornix-debug-log'" in e for e in errors))
 
 
@@ -352,7 +352,7 @@ class BuildMatrixAndSnippetTests(unittest.TestCase):
         self.assertIn("build-debug.yaml: skipped: file does not exist", warnings)
 
     def test_missing_required_matrix_is_an_error(self) -> None:
-        errors = cc.check_build_matrices(self.root)
+        errors = cc.check_build_matrices(self.root, [])
         self.assertEqual(errors, ["build.yaml: required build matrix file is missing"])
 
     def test_artifact_names_unique_per_file(self) -> None:
@@ -370,7 +370,7 @@ class BuildMatrixAndSnippetTests(unittest.TestCase):
             """,
         )
         write(self.root / "snippets/cornix-debug-log/snippet.yml", "name: cornix-debug-log\n")
-        errors = cc.check_build_matrices(self.root)
+        errors = cc.check_build_matrices(self.root, [])
         # "left" in both files is fine; "left" twice in build-debug.yaml is not.
         self.assertEqual(len(errors), 1)
         self.assertTrue(errors[0].startswith("build-debug.yaml: include[1]"))
@@ -385,7 +385,7 @@ class BuildMatrixAndSnippetTests(unittest.TestCase):
         write(self.root / "snippets/cornix-debug-log/snippet.yml", 'name: "cornix-debug-log"\nappend:\n  EXTRA_CONF_FILE: debug.conf\n')
         write(self.root / "snippets/misnamed/snippet.yml", "name: other\n")
         (self.root / "snippets/empty").mkdir()
-        errors = cc.check_snippets(self.root)
+        errors = cc.check_snippets(self.root, [])
         self.assertEqual(len(errors), 2)
         self.assertTrue(any("snippets/empty: missing snippet.yml" in e for e in errors))
         self.assertTrue(any("snippets/misnamed/snippet.yml: name 'other' must equal directory name 'misnamed'" in e for e in errors))
@@ -394,7 +394,7 @@ class BuildMatrixAndSnippetTests(unittest.TestCase):
 class WestManifestTests(unittest.TestCase):
     def run_check(self, text: str) -> list[str]:
         with tempfile.TemporaryDirectory() as tmp:
-            return cc.check_west_manifest(write(Path(tmp) / "west.yml", text))
+            return cc.check_west_manifest(write(Path(tmp) / "west.yml", text), [])
 
     def test_valid_manifest(self) -> None:
         errors = self.run_check(
@@ -493,7 +493,7 @@ class KconfigTests(unittest.TestCase):
         write(self.root / cc.BOARD_DIR / "cornix_left_defconfig", GOOD_DEFCONFIG_CENTRAL)
         write(self.root / "boards/shields/x/x.conf", "CONFIG_SETTINGS_NONE=y\n")
         write(self.root / "config/cornix.conf", "CONFIG_ZMK_SLEEP=y\n")
-        errors = cc.check_kconfig_fragments(self.root)
+        errors = cc.check_kconfig_fragments(self.root, [])
         self.assertEqual(len(errors), 1)
         self.assertIn("boards/shields/x/x.conf", errors[0])
 
@@ -503,7 +503,7 @@ class LayoutTests(unittest.TestCase):
 
     def run_check(self, text: str) -> list[str]:
         with tempfile.TemporaryDirectory() as tmp:
-            return cc.check_layouts_dtsi(write(Path(tmp) / "layouts.dtsi", text))
+            return cc.check_layouts_dtsi(write(Path(tmp) / "layouts.dtsi", text), [])
 
     def test_consistent_layout(self) -> None:
         self.assertEqual(self.run_check(layouts_dtsi(self.GOOD_MAP, 8)), [])
@@ -677,7 +677,7 @@ ZMK_LAYER(nav, &trans &trans &trans, &inc_dec_kp C_VOL_UP C_VOL_DN)
             "config/cornix42.keymap": ("json", "config/cornix42.json", "default_layout"),
         }
         try:
-            errors = cc.check_keymaps(self.root)
+            errors = cc.check_keymaps(self.root, [])
         finally:
             cc.KEYMAP_TARGETS = original
         self.assertEqual(len(errors), 1)
@@ -715,7 +715,7 @@ class MetadataTests(unittest.TestCase):
 
     def test_board_metadata_ok(self) -> None:
         self.make_board()
-        self.assertEqual(cc.check_board_metadata(self.root), [])
+        self.assertEqual(cc.check_board_metadata(self.root, []), [])
 
     def test_board_metadata_bad_sibling_and_missing_file(self) -> None:
         self.make_board(siblings="  - cornix_left\n  - cornix_ghost\n")
@@ -739,7 +739,7 @@ class MetadataTests(unittest.TestCase):
 
     def test_shields_ok(self) -> None:
         self.make_shield("cornix_thing")
-        self.assertEqual(cc.check_shield_dirs(self.root / cc.SHIELDS_DIR), [])
+        self.assertEqual(cc.check_shield_dirs(self.root / cc.SHIELDS_DIR, []), [])
 
     def test_shield_problems(self) -> None:
         self.make_shield("cornix_a", meta_id="cornix_b", overlay=False)
