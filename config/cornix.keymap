@@ -287,13 +287,13 @@
             display-name = "Base";
 
             // | TAB   | Q    | W    | E    | R     | T     |      |      | Y     | U     | I     | O    | P    | BSPC  |
-            // | CAPS  | A    | S    | D    | F     | G     |      |      | H     | J     | K     | L    | BSLH | RET   |
+            // | LCTRL | A    | S    | D    | F     | G     |      |      | H     | J     | K     | L    | BSLH | RET   |
             // | LSHFT | Z    | X    | C    | V     | B     | MUTE | BTN3 | N     | M     | COMMA | DOT  | UP   | FSLH  |
             // | LCTRL | LGUI | LALT | LGUI | MO(2) | SPACE |      |      | SPACE | MO(4) | MO(3) | LEFT | DOWN | RIGHT |
 
             bindings = <
 &kp TAB       &kp Q         &kp W     &kp E      &kp R      &kp T                             &kp Y      &kp U           &kp I           &kp O            &kp P      &kp BSPC
-&kp CAPS      &kp A         &kp S     &kp D      &kp F      &kp G                             &kp H      &kp J           &kp K           &kp L            &kp BSLH   &kp RET
+&kp LCTRL     &kp A         &kp S     &kp D      &kp F      &kp G                             &kp H      &kp J           &kp K           &kp L            &kp BSLH   &kp RET
 &kp LSHFT     &kp Z         &kp X     &kp C      &kp V      &kp B      &kp C_MUTE  &mkp MCLK  &kp N      &kp M           &kp COMMA       &kp DOT          &kp UP     &kp FSLH
 &kp LCTRL     &kp LGUI      &kp LALT  &kp LGUI   &mo 2      &kp SPACE                         &kp SPACE  &mo 4           &mo 3           &kp LEFT         &kp DOWN   &kp RIGHT
             >;
@@ -338,14 +338,14 @@
         layer_3 {
             display-name = "Fn2";
 
-            // | F12 | F1  | F2 | F3 | F4 | F5 |      |      | F6   | F7    | F8    | F9  | F10   |  |
-            // |     | F11 |    |    |    |    |      |      | HOME | PG_DN | PG_UP | END | PSCRN |  |
-            // |     |     |    |    |    |    | MUTE | BTN3 |      |       |       |     | INS   |  |
-            // |     |     |    |    |    |    |      |      |      |       |       |     |       |  |
+            // | F12  | F1  | F2 | F3 | F4 | F5 |      |      | F6   | F7    | F8    | F9  | F10   |  |
+            // | CAPS | F11 |    |    |    |    |      |      | HOME | PG_DN | PG_UP | END | PSCRN |  |
+            // |      |     |    |    |    |    | MUTE | BTN3 |      |       |       |     | INS   |  |
+            // |      |     |    |    |    |    |      |      |      |       |       |     |       |  |
 
             bindings = <
 &kp F12       &kp F1        &kp F2    &kp F3     &kp F4     &kp F5                            &kp F6     &kp F7          &kp F8          &kp F9           &kp F10    &trans
-&none         &kp F11       &none     &none      &none      &none                             &kp HOME   &kp PG_DN       &kp PG_UP       &kp END          &kp PSCRN  &trans
+&kp CAPS      &kp F11       &none     &none      &none      &none                             &kp HOME   &kp PG_DN       &kp PG_UP       &kp END          &kp PSCRN  &trans
 &trans        &none         &none     &none      &none      &none      &kp C_MUTE  &mkp MCLK  &none      &none           &none           &none            &kp INS    &none
 &trans        &trans        &trans    &trans     &none      &trans                            &trans     &trans          &none           &trans           &trans     &trans
             >;

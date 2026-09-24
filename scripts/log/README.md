@@ -519,7 +519,7 @@ paused).
 3. Type for a minute and compare the split-link disconnects with the same
    capture taken before the feature (section 3 protocol, runs A/B).
 4. Ask for BLE: `&out OUT_BLE` = hold both right thumb Fn keys (positions 45
-   and 46, which switches the Conn layer on) and tap position 12, the CAPS
+   and 46, which switches the Conn layer on) and tap position 12, the left Ctrl (ex-Caps)
    position. Expect `ble gate: BLE grace window (45000 ms)` and
    `ble gate: resumed` within ~0.5 s, and the Mac to connect within the 20 s.
    Once it does, expect `ble gate: BLE grace window closed (preferred 2

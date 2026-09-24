@@ -565,7 +565,7 @@ def build_html(keymap: "remap.Keymap", keys: Sequence[PhysKey], digest: str,
          "Conn レイヤー。覚え方：<strong>左端の列</strong>が上から USB → Bluetooth、"
          "<strong>その隣の列</strong>が上からプロファイル 0 → 1 → 2"),
         ("…<kbd>0</kbd>（Tab の位置）", "USB 出力に切り替え（<code>&amp;out OUT_USB</code>）"),
-        ("…<kbd>12</kbd>（Caps の位置）", "BLE 出力に切り替え（<code>&amp;out OUT_BLE</code>）。"
+        ("…<kbd>12</kbd>（左 Ctrl の位置）", "BLE 出力に切り替え（<code>&amp;out OUT_BLE</code>）。"
                                           "USB 接続中は <strong>" + grace_seconds() + " 秒</strong>の"
                                           "猶予ウィンドウの間だけ広告が許される"),
         ("…<kbd>1</kbd> / <kbd>13</kbd> / <kbd>25</kbd>（Q / A / Z の位置）",

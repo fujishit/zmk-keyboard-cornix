@@ -552,7 +552,7 @@ class KeymapContentTest(unittest.TestCase):
         self.assertEqual(fn2[36], "&kp INS")
         # The Bluetooth column moved to the Conn layer on 2026-09-22: 12 is
         # dead and 24/38 fall through to Shift/Ctrl.  The centre pair stays.
-        self.assertEqual(fn2[12], "&none")
+        self.assertEqual(fn2[12], "&kp CAPS")  # Caps Lock moved here 2026-09-24
         self.assertEqual(fn2[24], "&trans")
         self.assertEqual(fn2[38], "&trans")
         self.assertEqual(fn2[30], "&kp C_MUTE")
